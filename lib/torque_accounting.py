@@ -22,6 +22,8 @@ def parse_records(text):
     lines=text.split("\n")
 
     for line in lines:
+        if len(line)==0:
+            continue
         job_name, event_type, event_time, properties = parse_line(line)
         if not job_name in jobs:
             jobs[job_name] = {}
@@ -32,3 +34,12 @@ def parse_records(text):
             jobs[job_name][p]=properties[p]
 
     return jobs
+
+def parse_files(filenames):
+    texts=[]
+    for fname in filenames:
+        f = open(fname,'r')
+        texts.append(f.read())
+        f.close
+    return parse_records("\n".join(texts))
+
