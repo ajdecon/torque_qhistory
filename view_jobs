@@ -4,6 +4,8 @@ import sys
 import argparse
 from glob import glob
 from torque_accounting import parser
+import pprint
+import re
 
 global printfmt
 printfmt = "%10s %10s  %7s  %5s  %19s  %12s %12s"
@@ -57,13 +59,21 @@ def print_nodes(job):
 def print_header():
     print printfmt % ("Job ID","Username","Queue","Nodes", "Start Time","Waiting","Running")
     print printfmt % ("======","========","=====","=====", "==========","=======","=======")
-    
+
+def print_full_job(jobid,jobs):
+    for j in jobs:
+        if j==jobid or re.match("%s." % (jobid),j):
+            pp=pprint.PrettyPrinter(indent=4)
+            print "%s:" % (j)
+            pp.pprint(jobs[j])
+            break
 
 ################################# Main ##################################################
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--username","-u",dest="username",action="store",required=False,help="Show only jobs for this username")
 ap.add_argument("--queue","-q",dest="queue",action="store",required=False,help="Show only jobs for this queue")
+ap.add_argument("--job","-j",dest="job",action="store",required=False,help="Show only this job ID in full")
 ap.add_argument("--print-nodes","-n",dest="nodes",action="store_true",required=False,default=False,help="Print full node list used for each job")
 ap.add_argument("--files","-f",dest="files",nargs='+',action="store",required=False,help="Use the accounting records in these files",
     default = glob('/var/spool/torque/server_priv/accounting/*'))
@@ -71,6 +81,10 @@ ap.add_argument("--files","-f",dest="files",nargs='+',action="store",required=Fa
 args=ap.parse_args()
 
 jobs = parser.parse_files(args.files)
+
+if args.job:
+    print_full_job(args.job,jobs)
+    sys.exit(0)
 if args.username:
     jobs=filter_by_user(args.username,jobs)
 if args.queue:
