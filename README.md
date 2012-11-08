@@ -1,5 +1,4 @@
-torque_log_analyzer
-===================
+torque_qshistory
+=================
 
-Working on a set of Python scripts to parse job_logs files from the 
-Torque HPC resource manager and analyze the data for useful metrics.
+"qhistory" command to make it easier to view PBS Torque accounting logs.
