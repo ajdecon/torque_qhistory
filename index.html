@@ -1,0 +1,85 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Torque qhistory by ajdecon</title>
+
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+    <script src="javascripts/scale.fix.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header>
+        <h1 class="header">Torque qhistory</h1>
+        <p class="header">Command-line viewer for PBS (Torque) accounting logs</p>
+
+        <ul>
+          <li class="download"><a class="buttons" href="https://github.com/ajdecon/torque_qhistory/zipball/master">Download ZIP</a></li>
+          <li class="download"><a class="buttons" href="https://github.com/ajdecon/torque_qhistory/tarball/master">Download TAR</a></li>
+          <li><a class="buttons github" href="https://github.com/ajdecon/torque_qhistory">View On GitHub</a></li>
+        </ul>
+
+        <p class="header">This project is maintained by <a class="header name" href="https://github.com/ajdecon">ajdecon</a></p>
+
+
+      </header>
+      <section>
+        <h1>torque_qhistory</h1>
+
+<p><code>qhistory</code> is a basic script to make it easier to view PBS Torque accounting logs.
+It also includes a python module "torque_accounting" which encapsulates the actual 
+parsing logic. The easiest way to understand it is to read the code (it's very simple).</p>
+
+<pre><code>usage: qhistory [-h] [--username USERNAME] [--queue QUEUE] [--job JOB]
+                [--print-nodes] [--files FILES [FILES ...]]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --username USERNAME, -u USERNAME
+                        Show only jobs for this username
+  --queue QUEUE, -q QUEUE
+                        Show only jobs for this queue
+  --job JOB, -j JOB     Show only this job ID in full
+  --print-nodes, -n     Print full node list used for each job
+  --files FILES [FILES ...], -f FILES [FILES ...]
+                        Use the accounting records in these files
+</code></pre>
+
+<h2>To build and install as an RPM</h2>
+
+<ol>
+<li><code>python setup.py bdist_rpm</code></li>
+<li><code>sudo yum localinstall dist/torque-qhistory-0.1-1.noarch.rpm</code></li>
+</ol><h2>Background on the Torque scheduler</h2>
+
+<ul>
+<li>
+<a href="http://www.adaptivecomputing.com/products/open-source/torque/">Torque scheduler</a> on Adaptive Computing's website.</li>
+<li><a href="http://www.clusterresources.com/torquedocs21/9.1accounting.shtml">Details about Torque's accounting records</a></li>
+<li><a href="http://www.clusterresources.com/torquedocs21/">Full admin manual</a></li>
+</ul>
+      </section>
+      <footer>
+        <p><small>Hosted on <a href="https://pages.github.com">GitHub Pages</a> using the Dinky theme</small></p>
+      </footer>
+    </div>
+    <!--[if !IE]><script>fixScale(document);</script><![endif]-->
+		          <script type="text/javascript">
+            var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+            document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+          </script>
+          <script type="text/javascript">
+            try {
+              var pageTracker = _gat._getTracker("UA-12576607-2");
+            pageTracker._trackPageview();
+            } catch(err) {}
+          </script>
+
+  </body>
+</html>
