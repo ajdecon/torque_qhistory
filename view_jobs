@@ -2,23 +2,29 @@
 
 import sys
 import argparse
+from glob import glob
 from torque_accounting import parser
 
 global printfmt
-printfmt = "%30s %10s %5s %19s   %19s   %19s   %12s   %12s"
+printfmt = "%10s %10s  %7s  %5s  %19s   %12s   %12s"
 
 
 
 def print_job(name,job):
     try:
+        jid = (name[:8]+"..") if len(name)>10 else name
         user=job['user']
+        user = (user[:8]+"..") if len(user)>10 else user
+        queue = job['queue']
+        queue = (queue[:5]+"..") if len(queue)>7 else queue
         queuet=job['events']['Q']
         start=job['events']['S']
         endt=job['events']['E']
         wait_time=job['wait_time']
         run_time=job['run_time']
         nodect=job['Resource_List.nodect']
-        print printfmt % (name,user,nodect,queuet,start,endt,wait_time,run_time)
+        #print printfmt % (jid,user,queue,nodect,queuet,start,endt,wait_time,run_time)
+        print printfmt % (jid,user,queue,nodect,start,wait_time,run_time)
     except KeyError:
         pass
 
@@ -32,6 +38,16 @@ def filter_by_user(username,jobs):
             pass
     return ujobs
 
+def filter_by_queue(queue,jobs):
+    qjobs={}
+    for j in jobs:
+        try:
+            if jobs[j]['queue']==queue:
+                qjobs[j]=jobs[j]
+        except KeyError:
+            pass
+    return qjobs
+
 def print_nodes(job):
     try:
         print "%s\n" % (job['exec_host'])
@@ -39,22 +55,25 @@ def print_nodes(job):
         print "This job has no exec_host information!"
 
 def print_header():
-    print printfmt % ("Job Name","Username","Nodes", "Queue Time","Start Time","End Time","Wait Time","Run Time")
+    print printfmt % ("Job ID","Username","Queue","Nodes", "Start Time","Waiting","Running")
     
 
 ################################# Main ##################################################
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--username","-u",dest="username",action="store",required=False,help="Show only jobs for this username")
+ap.add_argument("--queue","-q",dest="queue",action="store",required=False,help="Show only jobs for this queue")
 ap.add_argument("--print-nodes","-n",dest="nodes",action="store_true",required=False,default=False,help="Print full node list used for each job")
-ap.add_argument("--files","-f",dest="files",nargs='+',action="store",required=True,help="Use the accounting records in these files")
+ap.add_argument("--files","-f",dest="files",nargs='+',action="store",required=False,help="Use the accounting records in these files",
+    default = glob('/var/spool/torque/server_priv/accounting/*'))
 
 args=ap.parse_args()
 
-if not args.username is None:
-    jobs=filter_by_user(args.username,parser.parse_files(args.files))
-else:
-    jobs=parser.parse_files(args.files)
+jobs = parser.parse_files(args.files)
+if args.username:
+    jobs=filter_by_user(args.username,jobs)
+if args.queue:
+    jobs=filter_by_queue(args.queue,jobs)
 
 print_header()
 for j in jobs:
