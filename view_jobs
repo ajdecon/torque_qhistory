@@ -6,7 +6,7 @@ from glob import glob
 from torque_accounting import parser
 
 global printfmt
-printfmt = "%10s %10s  %7s  %5s  %19s   %12s   %12s"
+printfmt = "%10s %10s  %7s  %5s  %19s  %12s %12s"
 
 
 
@@ -56,6 +56,7 @@ def print_nodes(job):
 
 def print_header():
     print printfmt % ("Job ID","Username","Queue","Nodes", "Start Time","Waiting","Running")
+    print printfmt % ("======","========","=====","=====", "==========","=======","=======")
     
 
 ################################# Main ##################################################
