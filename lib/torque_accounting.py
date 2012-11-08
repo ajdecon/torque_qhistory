@@ -1,5 +1,6 @@
 # torque_accounting.py
 #   Functions for working with Torque accounting files
+from datetime import datetime
 
 def parse_line(line):
     event = line.split(';')
@@ -8,10 +9,10 @@ def parse_line(line):
     event_time = event[0]
     
     properties={}
-    prop_strings = event.split(" ")
+    prop_strings = event[3].split(" ")
     for p in prop_strings:
         prop=p.split("=")
-        if len(prop)=2:
+        if len(prop)==2:
             properties[prop[0]] = prop[1]
 
     return (job_name, event_type, event_time, properties)
@@ -35,11 +36,30 @@ def parse_records(text):
 
     return jobs
 
+
+def calculate_durations(jobs):
+    for j in jobs:
+        try:
+            stime = datetime.strptime(jobs[j]['events']['S'],"%m/%d/%Y %H:%M:%S")
+            qtime = datetime.strptime(jobs[j]['events']['Q'],"%m/%d/%Y %H:%M:%S")
+            jobs[j]['wait_time']=str(stime-qtime)
+        except KeyError:
+            pass
+
+        try:
+            stime = datetime.strptime(jobs[j]['events']['S'],"%m/%d/%Y %H:%M:%S")
+            etime = datetime.strptime(jobs[j]['events']['E'],"%m/%d/%Y %H:%M:%S")
+            jobs[j]['run_time']=str(etime-stime)
+        except KeyError:
+            pass
+    return jobs
+
 def parse_files(filenames):
     texts=[]
     for fname in filenames:
         f = open(fname,'r')
         texts.append(f.read())
         f.close
-    return parse_records("\n".join(texts))
+    return calculate_durations(parse_records("\n".join(texts)))
+
 
