@@ -1,29 +1,55 @@
 #!/usr/bin/env python
 
 import sys
+import optparse
 from torque_accounting import parser
+
+global printfmt
+printfmt = "%30s %10s %5s %19s   %19s   %19s   %12s   %12s"
+
+
 
 def print_job(name,job):
     try:
         user=job['user']
-        queue=job['events']['Q']
+        queuet=job['events']['Q']
         start=job['events']['S']
         endt=job['events']['E']
         wait_time=job['wait_time']
         run_time=job['run_time']
-        print "%-20s  %-10s  %s  %s  %s  %s  %s" % (name,user,queue,start,endt,wait_time,run_time)
+        nodect=job['Resource_List.nodect']
+        print printfmt % (name,user,nodect,queuet,start,endt,wait_time,run_time)
     except KeyError:
         pass
 
-# Try simple case first: print all jobs owned by a user, from a set of accounting files
-username = sys.argv[1]
-files=sys.argv[2:]
+def filter_by_user(username,jobs):
+    ujobs={}
+    for j in jobs:
+        try:
+            if jobs[j]['user']==username:
+                ujobs[j]=jobs[j]
+        except KeyError:
+            pass
+    return ujobs
 
-jobs = parser.parse_files(files)
-print "%-20s  %-10s  %s  %s  %s  %s  %s" % ("Job Name","Username","Queue Time","Start Time","End Time","Wait Time","Run Time")
+def print_header():
+    print printfmt % ("Job Name","Username","Nodes", "Queue Time","Start Time","End Time","Wait Time","Run Time")
+    
+
+################################# Main ##################################################
+if len(sys.argv)==1:
+    print "USAGE: %s [-u username] account_files" % (sys.argv[0])
+    print "Examples: "
+    print "%s -u clusteruser /var/spool/torque/server_priv/accounting/*"
+    print "%s /tmp/accounting_files"
+    sys.exit(1)
+
+if sys.argv[1].lower() == "-u":
+    jobs=filter_by_user(sys.argv[2],parser.parse_files(sys.argv[3:]))
+else:
+    jobs=parser.parse_files(sys.argv[1:])
+
+print_header()
 for j in jobs:
-    try:
-        if jobs[j]['user']==username:
-            print_job(j,jobs[j])
-    except KeyError:
-        pass
+    print_job(j,jobs[j])
+
