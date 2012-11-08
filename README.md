@@ -1,4 +1,4 @@
-torque_qshistory
+torque_qhistory
 =================
 
 `qhistory` is a basic script to make it easier to view PBS Torque accounting logs.
