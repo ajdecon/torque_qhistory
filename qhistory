@@ -68,6 +68,9 @@ def print_full_job(jobid,jobs):
             pp.pprint(jobs[j])
             break
 
+def jobname_to_int(jobname):
+    return int(jobname.split('.')[0])
+
 ################################# Main ##################################################
 
 ap = argparse.ArgumentParser()
@@ -91,7 +94,8 @@ if args.queue:
     jobs=filter_by_queue(args.queue,jobs)
 
 print_header()
-for j in jobs:
+
+for j in sorted(jobs.iterkeys(),key=jobname_to_int):
     print_job(j,jobs[j])
     if args.nodes:
         print_nodes(jobs[j])

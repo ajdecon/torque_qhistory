@@ -1,6 +1,19 @@
 # torque_accounting.py
 #   Functions for working with Torque accounting files
 from datetime import datetime
+import sys
+
+# strfdelta: formatted print for timedelta object
+# with thanks to http://stackoverflow.com/questions/8906926/formatting-python-timedelta-objects
+def strfdelta(tdelta, fmt):
+    d = {'days': tdelta.days}
+    d['hours'], rem = divmod(tdelta.seconds, 3600)
+    d['minutes'], d['seconds'] = divmod(rem, 60)
+    # Force 2-digit values
+    d['hours'] = "%02d" % d['hours']
+    d['minutes'] = "%02d" % d['minutes']
+    d['seconds'] = "%02d" % d['seconds']
+    return fmt.format(**d)
 
 def parse_line(line):
     event = line.split(';')
@@ -25,7 +38,11 @@ def parse_records(text):
     for line in lines:
         if len(line)==0:
             continue
-        job_name, event_type, event_time, properties = parse_line(line)
+        try:
+            job_name, event_type, event_time, properties = parse_line(line)
+        except IndexError:
+            sys.stderr.write("WARNING: line could not be parsed\n%s\n" % line)
+            continue
         if not job_name in jobs:
             jobs[job_name] = {}
             jobs[job_name]['events'] = {}
@@ -42,14 +59,14 @@ def calculate_durations(jobs):
         try:
             stime = datetime.strptime(jobs[j]['events']['S'],"%m/%d/%Y %H:%M:%S")
             qtime = datetime.strptime(jobs[j]['events']['Q'],"%m/%d/%Y %H:%M:%S")
-            jobs[j]['wait_time']=str(stime-qtime)
+            jobs[j]['wait_time']=strfdelta(stime-qtime,"{days}:{hours}:{minutes}:{seconds}")
         except KeyError:
             pass
 
         try:
             stime = datetime.strptime(jobs[j]['events']['S'],"%m/%d/%Y %H:%M:%S")
             etime = datetime.strptime(jobs[j]['events']['E'],"%m/%d/%Y %H:%M:%S")
-            jobs[j]['run_time']=str(etime-stime)
+            jobs[j]['run_time']=strfdelta(etime-stime,"{days}:{hours}:{minutes}:{seconds}")
         except KeyError:
             pass
     return jobs
