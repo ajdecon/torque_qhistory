@@ -1,5 +1,6 @@
 qhistory
 setup.cfg
 setup.py
+man/qhistory.1
 torque_accounting/__init__.py
 torque_accounting/parser.py
