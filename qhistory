@@ -6,6 +6,7 @@ from glob import glob
 from torque_accounting import parser
 import pprint
 import re
+from datetime import datetime, timedelta
 
 global printfmt
 printfmt = "%10s %10s  %7s  %5s  %19s  %12s %12s"
@@ -71,6 +72,85 @@ def print_full_job(jobid,jobs):
 def jobname_to_int(jobname):
     return int(jobname.split('.')[0])
 
+
+def print_summary(jobs):
+    users={}
+    alljobs=len(jobs)
+    jobs_complete=0
+    total_job_time=timedelta(0)
+    total_node_hours=timedelta(0)
+    total_nodes_used = 0
+    total_wait_time=timedelta(0)
+
+    for j in jobs:
+        try:
+            qtime=datetime.strptime(jobs[j]['events']['Q'],"%m/%d/%Y %H:%M:%S")
+            start=datetime.strptime(jobs[j]['events']['S'],"%m/%d/%Y %H:%M:%S")
+            finish=datetime.strptime(jobs[j]['events']['E'],"%m/%d/%Y %H:%M:%S")
+        except:
+            continue
+                
+        u=jobs[j]['user']
+        try:
+            users[u]['job_count'] += 1
+            users[u]['job_time'] += (finish-start)
+            users[u]['node_time'] += int(jobs[j]['Resource_List.nodect'])*(finish-start)
+            users[u]['node_total'] += int(jobs[j]['Resource_List.nodect'])
+            users[u]['queues'].add(jobs[j]['queue'])
+            try: 
+                users[u]['requests'].append(jobs[j]['Resource_List.neednodes'])
+            except:
+                pass
+        except KeyError:
+            users[u]={}
+            users[u]['job_count'] = 1
+            users[u]['job_time'] = (finish-start)
+            users[u]['node_time'] = int(jobs[j]['Resource_List.nodect'])*(finish-start)
+            users[u]['node_total'] = int(jobs[j]['Resource_List.nodect'])
+            users[u]['queues'] = set()
+            users[u]['queues'].add(jobs[j]['queue'])
+            users[u]['requests'] = []
+            try:
+                users[u]['requests'].append(jobs[j]['Resource_List.neednodes'])
+            except:
+                pass
+        jobs_complete += 1
+        total_job_time += (finish-start)
+        total_nodes_used += int(jobs[j]['Resource_List.nodect'])
+        total_node_hours += int(jobs[j]['Resource_List.nodect'])*(finish-start)
+        total_wait_time += (start-qtime)
+        
+
+    print "-----------------------------"
+    print "Total jobs: %d" % alljobs
+    print "Total jobs completed: %d" % jobs_complete
+    print "Total job time: %s" % parser.strfdelta(total_job_time,"{days}:{hours}:{minutes}:{seconds}")
+    print "Total node time used: %s" % parser.strfdelta(total_node_hours,"{days}:{hours}:{minutes}:{seconds}")
+    print " "
+    print "Average nodes per job: %2.2f" % (float(total_nodes_used)/int(jobs_complete))
+    print "Average wallclock time: %s" % parser.strfdelta( total_job_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
+    print "Average node time: %s" % parser.strfdelta( total_node_hours/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
+    print "Average waiting time: %s" % parser.strfdelta( total_wait_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
+    print " "
+    newfmt = "%15s - %4s - %10s - %10s - %13s - %20s"
+    print newfmt % ("USER","JOBS","JOB TIME","NODE TIME","AVG NODES/JOB","QUEUES")
+    print newfmt % ("====","====","========","=========","=============","======")
+    for u in sorted(users):
+        print newfmt % ( u, str(users[u]['job_count']),
+            parser.strfdelta(users[u]['job_time'],"{days}:{hours}:{minutes}:{seconds}"),
+            parser.strfdelta(users[u]['node_time'],"{days}:{hours}:{minutes}:{seconds}"),
+            str( float(users[u]['node_total'])/users[u]['job_count'] ),
+            ",".join(users[u]['queues']) )
+        if len(users[u]['requests'])>0:
+            print "Request types: %s\n" % " ; ".join(set(users[u]['requests']))
+
+#    print "DEBUG"
+#    print total_job_time
+#    print total_node_hours
+#    print users
+
+
+
 ################################# Main ##################################################
 
 ap = argparse.ArgumentParser()
@@ -80,6 +160,7 @@ ap.add_argument("--job","-j",dest="job",action="store",required=False,help="Show
 ap.add_argument("--print-nodes","-n",dest="nodes",action="store_true",required=False,default=False,help="Print full node list used for each job")
 ap.add_argument("--files","-f",dest="files",nargs='+',action="store",required=False,help="Use the accounting records in these files",
     default = glob('/var/spool/torque/server_priv/accounting/*'))
+ap.add_argument("--summarize","-s",dest="summarize",action="store_true",required=False,default=False,help="Print utilization summary")
 
 args=ap.parse_args()
 
@@ -93,10 +174,14 @@ if args.username:
 if args.queue:
     jobs=filter_by_queue(args.queue,jobs)
 
-print_header()
+if args.summarize:
+    print_summary(jobs)
+    sys.exit(0)
 
+print_header()
 for j in sorted(jobs.iterkeys(),key=jobname_to_int):
     print_job(j,jobs[j])
     if args.nodes:
         print_nodes(jobs[j])
+
 
