@@ -126,6 +126,7 @@ def print_summary(jobs):
     print "Total jobs completed: %d" % jobs_complete
     print "Total job time: %s" % parser.strfdelta(total_job_time,"{days}:{hours}:{minutes}:{seconds}")
     print "Total node time used: %s" % parser.strfdelta(total_node_hours,"{days}:{hours}:{minutes}:{seconds}")
+    print "Number of users: %d" % len(users)
     print " "
     print "Average nodes per job: %2.2f" % (float(total_nodes_used)/int(jobs_complete))
     print "Average wallclock time: %s" % parser.strfdelta( total_job_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
