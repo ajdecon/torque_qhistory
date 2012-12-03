@@ -79,9 +79,18 @@ def exechost_to_nodes(exec_host_string):
         nodes.add(eh.split('/')[0])
     return nodes
 
+def proplist_to_props(proplist):
+    properties=set()
+    props=proplist.split(':')
+    for p in props:
+        if not p.isdigit():
+            properties.add(p)
+    return properties
+
 def print_summary(jobs):
     users={}
     nodes={}
+    properties={}
     alljobs=len(jobs)
     jobs_complete=0
     total_job_time=timedelta(0)
@@ -96,7 +105,6 @@ def print_summary(jobs):
             finish=datetime.strptime(jobs[j]['events']['E'],"%m/%d/%Y %H:%M:%S")
         except:
             continue
-
         nodelist=exechost_to_nodes(jobs[j]['exec_host'])
         for n in nodelist:
             try:
@@ -106,6 +114,15 @@ def print_summary(jobs):
                 nodes[n] = {}
                 nodes[n]['job_count'] = 1
                 nodes[n]['job_time'] = finish-start
+        try:
+            props=proplist_to_props(jobs[j]['Resource_List.neednodes'])
+            for p in props:
+                try:
+                    properties[p] += 1
+                except KeyError:
+                    properties[p] = 1
+        except KeyError:
+            pass
                 
         u=jobs[j]['user']
         try:
@@ -151,6 +168,12 @@ def print_summary(jobs):
     print "Average node time: %s" % parser.strfdelta( total_node_hours/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
     print "Average waiting time: %s" % parser.strfdelta( total_wait_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
     print " "
+    print "-----------------------------"
+    propfmt = "%8s - %6s"
+    print propfmt % ("PROPERTY","COUNT")
+    print propfmt % ("========","=====")
+    for p in sorted(properties, key=lambda x: properties[x], reverse=True):
+        print propfmt % (p, properties[p])
     print "-----------------------------"
     print "USERS"
     newfmt = "%15s - %4s - %10s - %10s - %13s - %20s"
