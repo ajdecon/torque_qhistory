@@ -72,9 +72,16 @@ def print_full_job(jobid,jobs):
 def jobname_to_int(jobname):
     return int(jobname.split('.')[0])
 
+def exechost_to_nodes(exec_host_string):
+    nodes=set()
+    ehosts=exec_host_string.split('+')
+    for eh in ehosts:
+        nodes.add(eh.split('/')[0])
+    return nodes
 
 def print_summary(jobs):
     users={}
+    nodes={}
     alljobs=len(jobs)
     jobs_complete=0
     total_job_time=timedelta(0)
@@ -89,6 +96,16 @@ def print_summary(jobs):
             finish=datetime.strptime(jobs[j]['events']['E'],"%m/%d/%Y %H:%M:%S")
         except:
             continue
+
+        nodelist=exechost_to_nodes(jobs[j]['exec_host'])
+        for n in nodelist:
+            try:
+                nodes[n]['job_count'] += 1
+                nodes[n]['job_time'] += (finish-start)
+            except KeyError:
+                nodes[n] = {}
+                nodes[n]['job_count'] = 1
+                nodes[n]['job_time'] = finish-start
                 
         u=jobs[j]['user']
         try:
@@ -127,12 +144,15 @@ def print_summary(jobs):
     print "Total job time: %s" % parser.strfdelta(total_job_time,"{days}:{hours}:{minutes}:{seconds}")
     print "Total node time used: %s" % parser.strfdelta(total_node_hours,"{days}:{hours}:{minutes}:{seconds}")
     print "Number of users: %d" % len(users)
+    print "Number of nodes used: %d" % len(nodes)
     print " "
     print "Average nodes per job: %2.2f" % (float(total_nodes_used)/int(jobs_complete))
     print "Average wallclock time: %s" % parser.strfdelta( total_job_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
     print "Average node time: %s" % parser.strfdelta( total_node_hours/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
     print "Average waiting time: %s" % parser.strfdelta( total_wait_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
     print " "
+    print "-----------------------------"
+    print "USERS"
     newfmt = "%15s - %4s - %10s - %10s - %13s - %20s"
     print newfmt % ("USER","JOBS","JOB TIME","NODE TIME","AVG NODES/JOB","QUEUES")
     print newfmt % ("====","====","========","=========","=============","======")
@@ -144,6 +164,15 @@ def print_summary(jobs):
             ",".join(users[u]['queues']) )
         if len(users[u]['requests'])>0:
             print "Request types: %s\n" % " ; ".join(set(users[u]['requests']))
+    print "-----------------------------"
+    print "NODES"
+    nodefmt = "%15s - %4s - %10s"
+    print nodefmt % ("NODE","JOBS","JOB TIME")
+    print nodefmt % ("====","====","========")
+    for n in sorted(nodes, key=lambda x: nodes[x]['job_count'], reverse=True):
+        print nodefmt % (n, str(nodes[n]['job_count']), 
+        parser.strfdelta(nodes[n]['job_time'],"{days}:{hours}:{minutes}:{seconds}"))
+
 
 #    print "DEBUG"
 #    print total_job_time
@@ -161,7 +190,7 @@ ap.add_argument("--job","-j",dest="job",action="store",required=False,help="Show
 ap.add_argument("--print-nodes","-n",dest="nodes",action="store_true",required=False,default=False,help="Print full node list used for each job")
 ap.add_argument("--files","-f",dest="files",nargs='+',action="store",required=False,help="Use the accounting records in these files",
     default = glob('/var/spool/torque/server_priv/accounting/*'))
-ap.add_argument("--summarize","-s",dest="summarize",action="store_true",required=False,default=False,help="Print utilization summary")
+ap.add_argument("--statistics","-s",dest="summarize",action="store_true",required=False,default=False,help="Print utilization statistics")
 
 args=ap.parse_args()
 
