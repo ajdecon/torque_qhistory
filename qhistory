@@ -179,7 +179,7 @@ def print_summary(jobs):
     newfmt = "%15s - %4s - %10s - %10s - %13s - %20s"
     print newfmt % ("USER","JOBS","JOB TIME","NODE TIME","AVG NODES/JOB","QUEUES")
     print newfmt % ("====","====","========","=========","=============","======")
-    for u in sorted(users):
+    for u in sorted(users, key=lambda x: users[x]['node_time'], reverse=True):
         print newfmt % ( u, str(users[u]['job_count']),
             parser.strfdelta(users[u]['job_time'],"{days}:{hours}:{minutes}:{seconds}"),
             parser.strfdelta(users[u]['node_time'],"{days}:{hours}:{minutes}:{seconds}"),
