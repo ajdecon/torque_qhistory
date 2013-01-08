@@ -91,6 +91,7 @@ def print_summary(jobs):
     users={}
     nodes={}
     properties={}
+    queues={}
     alljobs=len(jobs)
     jobs_complete=0
     total_job_time=timedelta(0)
@@ -123,6 +124,11 @@ def print_summary(jobs):
                     properties[p] = 1
         except KeyError:
             pass
+
+        try:
+            queues[jobs[j]['queue']] += 1
+        except KeyError:
+            queues[jobs[j]['queue']] = 1
                 
         u=jobs[j]['user']
         try:
@@ -169,12 +175,22 @@ def print_summary(jobs):
     print "Average waiting time: %s" % parser.strfdelta( total_wait_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
     print " "
     print "-----------------------------"
+
     propfmt = "%8s - %6s"
     print propfmt % ("PROPERTY","COUNT")
     print propfmt % ("========","=====")
     for p in sorted(properties, key=lambda x: properties[x], reverse=True):
         print propfmt % (p, properties[p])
     print "-----------------------------"
+
+    queuefmt = "%12s - %6s"
+    print queuefmt % ("QUEUE","COUNT")
+    print queuefmt % ("============","======")
+    for q in sorted(queues, key=lambda x: queues[x], reverse=True):
+        print queuefmt % (q, queues[q])
+    print "-----------------------------"
+
+
     print "USERS"
     newfmt = "%15s - %4s - %10s - %10s - %13s - %20s"
     print newfmt % ("USER","JOBS","JOB TIME","NODE TIME","AVG NODES/JOB","QUEUES")
@@ -188,6 +204,7 @@ def print_summary(jobs):
         if len(users[u]['requests'])>0:
             print "Request types: %s\n" % " ; ".join(set(users[u]['requests']))
     print "-----------------------------"
+
     print "NODES"
     nodefmt = "%15s - %4s - %10s"
     print nodefmt % ("NODE","JOBS","JOB TIME")
