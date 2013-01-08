@@ -192,7 +192,7 @@ def print_summary(jobs):
     nodefmt = "%15s - %4s - %10s"
     print nodefmt % ("NODE","JOBS","JOB TIME")
     print nodefmt % ("====","====","========")
-    for n in sorted(nodes, key=lambda x: nodes[x]['job_count'], reverse=True):
+    for n in sorted(nodes, key=lambda x: nodes[x]['job_time'], reverse=True):
         print nodefmt % (n, str(nodes[n]['job_count']), 
         parser.strfdelta(nodes[n]['job_time'],"{days}:{hours}:{minutes}:{seconds}"))
 
