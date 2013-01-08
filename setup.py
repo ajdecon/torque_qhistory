@@ -3,7 +3,7 @@
 from distutils.core import setup
 
 setup(name="torque-qhistory",
-      version="0.3.3",
+      version="0.3.4",
       description="Simple script to help view PBS/Torque accounting files",
       author="Adam DeConinck",
       author_email="ajdecon@ajdecon.org",
