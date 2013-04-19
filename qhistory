@@ -90,7 +90,7 @@ def proplist_to_props(proplist):
             properties.add(p)
     return properties
 
-def print_summary(jobs):
+def print_summary(jobs, nodestats):
     users={}
     nodes={}
     properties={}
@@ -136,10 +136,14 @@ def print_summary(jobs):
         except KeyError:
             pass
 
+        q=jobs[j]['queue']
         try:
-            queues[jobs[j]['queue']] += 1
+            queues[q]['job_count'] += 1
+            queues[q]['wait_time'] += (start-qtime)
         except KeyError:
-            queues[jobs[j]['queue']] = 1
+            queues[q]={}
+            queues[q]['job_count'] = 1
+            queues[q]['wait_time'] = (start-qtime)
                 
         u=jobs[j]['user']
         try:
@@ -149,6 +153,7 @@ def print_summary(jobs):
             users[u]['node_total'] += int(jobs[j]['Resource_List.nodect'])
             users[u]['cpu_time'] += (procs)*(finish-start)
             users[u]['cpu_total'] += procs
+            users[u]['wait_time'] += (start-qtime)
             users[u]['queues'].add(jobs[j]['queue'])
             try: 
                 users[u]['requests'].append(jobs[j]['Resource_List.neednodes'])
@@ -168,6 +173,7 @@ def print_summary(jobs):
             users[u]['node_total'] = int(jobs[j]['Resource_List.nodect'])
             users[u]['cpu_time'] = int(procs)*(finish-start)
             users[u]['cpu_total'] = procs
+            users[u]['wait_time'] = (start-qtime)
             users[u]['queues'] = set()
             users[u]['queues'].add(jobs[j]['queue'])
             users[u]['requests'] = []
@@ -182,6 +188,7 @@ def print_summary(jobs):
         total_cpu_hours += (procs)*(finish-start)
         total_cpus_used += procs
         total_wait_time += (start-qtime)
+
       
         # DBG notes: Other useful fields (for determining memory
         # requested/used, GPUs, SM vs MPI, etc)
@@ -231,35 +238,41 @@ def print_summary(jobs):
         print propfmt % (p, properties[p])
     print "-----------------------------"
 
-    queuefmt = "%12s - %6s"
-    print queuefmt % ("QUEUE","COUNT")
-    print queuefmt % ("============","======")
+    queuefmt = "%16s - %6s - %13s"
+    print queuefmt % ("QUEUE","COUNT","AVG WAIT TIME")
+    print queuefmt % ("============","======","=============")
     for q in sorted(queues, key=lambda x: queues[x], reverse=True):
-        print queuefmt % (q, queues[q])
+     print queuefmt % (q, queues[q]['job_count'], 
+         parser.strfdelta(queues[q]['wait_time']/queues[q]['job_count'],"{days}:{hours}:{minutes}:{seconds}"))
     print "-----------------------------"
 
 
     print "USERS"
-    newfmt = "%15s - %4s - %10s - %10s - %13s - %20s"
-    print newfmt % ("USER","JOBS","JOB TIME","NODE TIME","AVG NODES/JOB","QUEUES")
-    print newfmt % ("====","====","========","=========","=============","======")
+    newfmt = "%15s - %4s - %10s - %10s - %13s - %13s - %13s"
+    print newfmt % ("USER","JOBS","JOB TIME","NODE TIME","AVG WAIT TIME","AVG NODES/JOB","AVG CORES/JOB")
+    print newfmt % ("====","====","========","=========","=============","=============","=============")
     for u in sorted(users, key=lambda x: users[x]['node_time'], reverse=True):
         print newfmt % ( u, str(users[u]['job_count']),
             parser.strfdelta(users[u]['job_time'],"{days}:{hours}:{minutes}:{seconds}"),
             parser.strfdelta(users[u]['node_time'],"{days}:{hours}:{minutes}:{seconds}"),
+            #parser.strfdelta(users[u]['wait_time'],"{days}:{hours}:{minutes}:{seconds}"),
+            parser.strfdelta( users[u]['wait_time']/users[u]['job_count'], "{days}:{hours}:{minutes}:{seconds}"),
             str( float(users[u]['node_total'])/users[u]['job_count'] ),
-            ",".join(users[u]['queues']) )
+            str( float(users[u]['cpu_total'])/users[u]['job_count'] ) )
         if len(users[u]['requests'])>0:
-            print "Request types: %s\n" % " ; ".join(set(users[u]['requests']))
+            print "Request types: %s" % " ; ".join(set(users[u]['requests']))
+        if len(users[u]['queues'])>0:
+            print "Queues: %s\n" % ",".join(users[u]['queues'])
     print "-----------------------------"
 
-    print "NODES"
-    nodefmt = "%15s - %4s - %10s"
-    print nodefmt % ("NODE","JOBS","JOB TIME")
-    print nodefmt % ("====","====","========")
-    for n in sorted(nodes, key=lambda x: nodes[x]['job_time'], reverse=True):
-        print nodefmt % (n, str(nodes[n]['job_count']), 
-        parser.strfdelta(nodes[n]['job_time'],"{days}:{hours}:{minutes}:{seconds}"))
+    if nodestats:
+        print "NODES"
+        nodefmt = "%15s - %4s - %10s"
+        print nodefmt % ("NODE","JOBS","JOB TIME")
+        print nodefmt % ("====","====","========")
+        for n in sorted(nodes, key=lambda x: nodes[x]['job_time'], reverse=True):
+            print nodefmt % (n, str(nodes[n]['job_count']), 
+            parser.strfdelta(nodes[n]['job_time'],"{days}:{hours}:{minutes}:{seconds}"))
 
 
 #    print "DEBUG"
@@ -279,6 +292,7 @@ ap.add_argument("--print-nodes","-n",dest="nodes",action="store_true",required=F
 ap.add_argument("--files","-f",dest="files",nargs='+',action="store",required=False,help="Use the accounting records in these files",
     default = glob('/var/spool/torque/server_priv/accounting/*'))
 ap.add_argument("--statistics","-s",dest="summarize",action="store_true",required=False,default=False,help="Print utilization statistics")
+ap.add_argument("--nodestatistics","-z",dest="nodestats",action="store_true",required=False,default=False,help="Print node utilization statistics")
 ap.add_argument("--debug","-d",dest="debug",action="store_true",required=False,default=False,help="Print debug information")
 
 args=ap.parse_args()
@@ -297,7 +311,7 @@ if args.queue:
     jobs=filter_by_queue(args.queue,jobs)
 
 if args.summarize:
-    print_summary(jobs)
+    print_summary(jobs, args.nodestats)
     sys.exit(0)
 
 print_header()
