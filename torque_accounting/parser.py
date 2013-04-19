@@ -15,7 +15,7 @@ def strfdelta(tdelta, fmt):
     d['seconds'] = "%02d" % d['seconds']
     return fmt.format(**d)
 
-def parse_line(line):
+def parse_line(line, debug):
     event = line.split(';')
     job_name = event[2]
     event_type = event[1]
@@ -39,17 +39,18 @@ def parse_line(line):
 
     return (job_name, event_type, event_time, properties)
 
-def parse_records(text):
+def parse_records(text, debug):
     jobs = {}
 
     lines=text.split("\n")
 
     for line in lines:
-        print line
+        if debug==1:
+            print line
         if len(line)==0:
             continue
         try:
-            job_name, event_type, event_time, properties = parse_line(line)
+            job_name, event_type, event_time, properties = parse_line(line, debug)
         except IndexError:
             sys.stderr.write("WARNING: line could not be parsed\n%s\n" % line)
             continue
@@ -60,7 +61,8 @@ def parse_records(text):
         
         for p in properties:
             jobs[job_name][p]=properties[p]
-            print "Adding j " + job_name + " p " + p + " = " + properties[p] + "\n"
+            if debug==1:
+                print "Adding j " + job_name + " p " + p + " = " + properties[p] + "\n"
 
     return jobs
 
@@ -82,12 +84,12 @@ def calculate_durations(jobs):
             pass
     return jobs
 
-def parse_files(filenames):
+def parse_files(filenames, debug):
     texts=[]
     for fname in filenames:
         f = open(fname,'r')
         texts.append(f.read())
         f.close
-    return calculate_durations(parse_records("\n".join(texts)))
+    return calculate_durations(parse_records("\n".join(texts), debug))
 
 

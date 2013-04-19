@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 global printfmt
 printfmt = "%10s %10s  %7s  %5s  %19s  %12s %12s"
-
+debug = 0
 
 
 def print_job(name,job):
@@ -111,9 +111,11 @@ def print_summary(jobs):
             finish=datetime.strptime(jobs[j]['events']['E'],"%m/%d/%Y %H:%M:%S")
         except:
             continue
+
         # DBG: Figure out number of cores based on exec_host
         procs=exechost_to_procs(jobs[j]['exec_host'])
-        print "Procs " + str(procs)
+        if debug==1:
+            print "Procs " + str(procs)
 
         nodelist=exechost_to_nodes(jobs[j]['exec_host'])
         for n in nodelist:
@@ -190,7 +192,7 @@ def print_summary(jobs):
         # resources_used.vmem=1995544kb 
 
         # Waited more than 12 hours to start?
-        if 1==0:
+        if debug==1:
          if parser.strfdelta((start-qtime),"{hours}") > 43200:
             print "> 12 hours qtime: "
             try:
@@ -277,10 +279,14 @@ ap.add_argument("--print-nodes","-n",dest="nodes",action="store_true",required=F
 ap.add_argument("--files","-f",dest="files",nargs='+',action="store",required=False,help="Use the accounting records in these files",
     default = glob('/var/spool/torque/server_priv/accounting/*'))
 ap.add_argument("--statistics","-s",dest="summarize",action="store_true",required=False,default=False,help="Print utilization statistics")
+ap.add_argument("--debug","-d",dest="debug",action="store_true",required=False,default=False,help="Print debug information")
 
 args=ap.parse_args()
 
-jobs = parser.parse_files(args.files)
+if args.debug:
+    debug = 1
+
+jobs = parser.parse_files(args.files, debug)
 
 if args.job:
     print_full_job(args.job,jobs)
