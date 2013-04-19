@@ -24,18 +24,28 @@ def parse_line(line, debug):
     properties={}
     prop_strings = event[3].split(" ")
     for p in prop_strings:
-        # DBG: Deal with : separated node fields
-        prop=p.split("=", 2)
+        # DBG: Don't over-split complex node flags
+        prop=p.split("=", 1)
+        if debug==1:
+         print "Parsing p " + p + " (len " + str(len(prop)) + ")"
         if len(prop)==2:
             properties[prop[0]] = prop[1]
-            flags=p.split(":")
-            if len(flags) > 1:
-                for f in flags:
-                    subprop=f.split("=")
-                    if len(subprop)==2:
-                        properties[subprop[0]] = subprop[1]
-                    elif len(subprop)==1:
-                        properties[subprop[0]] = subprop[0]
+            if debug==1:
+             print "Parsing property " + prop[0]
+            # DBG: Deal with : separated node fields, but only for node flags
+            if "nodes" in prop[0]:
+                flags=p.split(":")
+                if len(flags) > 1:
+                    for f in flags:
+                        subprop=f.split("=")
+                        if len(subprop)==2:
+                            properties[subprop[0]] = subprop[1]
+                            if debug==1:
+                             print "Found subprop " + subprop[0] + " = " + subprop[1]
+                        elif len(subprop)==1:
+                            properties[subprop[0]] = subprop[0]
+                            if debug==1:
+                             print "Found subprop " + subprop[0]
 
     return (job_name, event_type, event_time, properties)
 
@@ -62,7 +72,7 @@ def parse_records(text, debug):
         for p in properties:
             jobs[job_name][p]=properties[p]
             if debug==1:
-                print "Adding j " + job_name + " p " + p + " = " + properties[p] + "\n"
+                print "Adding j " + job_name + " p " + p + " = " + properties[p]
 
     return jobs
 
