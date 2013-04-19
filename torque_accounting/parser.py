@@ -24,9 +24,18 @@ def parse_line(line):
     properties={}
     prop_strings = event[3].split(" ")
     for p in prop_strings:
-        prop=p.split("=")
+        # DBG: Deal with : separated node fields
+        prop=p.split("=", 2)
         if len(prop)==2:
             properties[prop[0]] = prop[1]
+            flags=p.split(":")
+            if len(flags) > 1:
+                for f in flags:
+                    subprop=f.split("=")
+                    if len(subprop)==2:
+                        properties[subprop[0]] = subprop[1]
+                    elif len(subprop)==1:
+                        properties[subprop[0]] = subprop[0]
 
     return (job_name, event_type, event_time, properties)
 
@@ -36,6 +45,7 @@ def parse_records(text):
     lines=text.split("\n")
 
     for line in lines:
+        print line
         if len(line)==0:
             continue
         try:
@@ -50,6 +60,7 @@ def parse_records(text):
         
         for p in properties:
             jobs[job_name][p]=properties[p]
+            print "Adding j " + job_name + " p " + p + " = " + properties[p] + "\n"
 
     return jobs
 
