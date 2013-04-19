@@ -79,6 +79,9 @@ def exechost_to_nodes(exec_host_string):
         nodes.add(eh.split('/')[0])
     return nodes
 
+def exechost_to_procs(exec_host_string):
+    return len(exec_host_string.split('+'))
+
 def proplist_to_props(proplist):
     properties=set()
     props=proplist.split(':')
@@ -97,6 +100,8 @@ def print_summary(jobs):
     total_job_time=timedelta(0)
     total_node_hours=timedelta(0)
     total_nodes_used = 0
+    total_cpu_hours=timedelta(0)
+    total_cpus_used = 0
     total_wait_time=timedelta(0)
 
     for j in jobs:
@@ -106,6 +111,10 @@ def print_summary(jobs):
             finish=datetime.strptime(jobs[j]['events']['E'],"%m/%d/%Y %H:%M:%S")
         except:
             continue
+        # DBG: Figure out number of cores based on exec_host
+        procs=exechost_to_procs(jobs[j]['exec_host'])
+        print "Procs " + str(procs)
+
         nodelist=exechost_to_nodes(jobs[j]['exec_host'])
         for n in nodelist:
             try:
@@ -136,6 +145,8 @@ def print_summary(jobs):
             users[u]['job_time'] += (finish-start)
             users[u]['node_time'] += int(jobs[j]['Resource_List.nodect'])*(finish-start)
             users[u]['node_total'] += int(jobs[j]['Resource_List.nodect'])
+            users[u]['cpu_time'] += (procs)*(finish-start)
+            users[u]['cpu_total'] += procs
             users[u]['queues'].add(jobs[j]['queue'])
             try: 
                 users[u]['requests'].append(jobs[j]['Resource_List.neednodes'])
@@ -145,8 +156,16 @@ def print_summary(jobs):
             users[u]={}
             users[u]['job_count'] = 1
             users[u]['job_time'] = (finish-start)
+
+            if not 'Resource_List.nodect' in jobs[j]:
+             sys.stderr.write("WARNING: %s missing Resource_list.nodect\n" % j)
+             print_job(j,jobs[j])
+             jobs[j]['Resource_List.nodect']=1
+
             users[u]['node_time'] = int(jobs[j]['Resource_List.nodect'])*(finish-start)
             users[u]['node_total'] = int(jobs[j]['Resource_List.nodect'])
+            users[u]['cpu_time'] = int(procs)*(finish-start)
+            users[u]['cpu_total'] = procs
             users[u]['queues'] = set()
             users[u]['queues'].add(jobs[j]['queue'])
             users[u]['requests'] = []
@@ -158,8 +177,32 @@ def print_summary(jobs):
         total_job_time += (finish-start)
         total_nodes_used += int(jobs[j]['Resource_List.nodect'])
         total_node_hours += int(jobs[j]['Resource_List.nodect'])*(finish-start)
+        total_cpu_hours += (procs)*(finish-start)
+        total_cpus_used += procs
         total_wait_time += (start-qtime)
-        
+      
+        # DBG notes: Other useful fields (for determining memory
+        # requested/used, GPUs, SM vs MPI, etc)
+        # Resource_List.mem=15gb 
+        # Resource_List.nodes=1:ppn=1 
+        # Resource_List.partition=dmc 
+        # resources_used.mem=1919948kb 
+        # resources_used.vmem=1995544kb 
+
+        # Waited more than 12 hours to start?
+        if 1==0:
+         if parser.strfdelta((start-qtime),"{hours}") > 43200:
+            print "> 12 hours qtime: "
+            try:
+                print "nodes %s" % jobs[j]['Resource_List.neednodes']
+            except:
+                pass
+            print ", mem %s" % jobs[j]['Resource_List.mem']
+            try:
+                print ", partition %s" % jobs[j]['Resource_List.partition']
+            except:
+                pass
+            print "\n"
 
     print "-----------------------------"
     print "Total jobs: %d" % alljobs
@@ -168,10 +211,13 @@ def print_summary(jobs):
     print "Total node time used: %s" % parser.strfdelta(total_node_hours,"{days}:{hours}:{minutes}:{seconds}")
     print "Number of users: %d" % len(users)
     print "Number of nodes used: %d" % len(nodes)
+    print "Number of cores used: %d" % total_cpus_used
     print " "
     print "Average nodes per job: %2.2f" % (float(total_nodes_used)/int(jobs_complete))
+    print "Average cores per job: %2.2f" % (float(total_cpus_used)/int(jobs_complete))
     print "Average wallclock time: %s" % parser.strfdelta( total_job_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
     print "Average node time: %s" % parser.strfdelta( total_node_hours/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
+    print "Average cpu time: %s" % parser.strfdelta( total_cpu_hours/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
     print "Average waiting time: %s" % parser.strfdelta( total_wait_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
     print " "
     print "-----------------------------"
