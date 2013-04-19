@@ -259,10 +259,9 @@ def print_summary(jobs, nodestats):
             parser.strfdelta( users[u]['wait_time']/users[u]['job_count'], "{days}:{hours}:{minutes}:{seconds}"),
             str( float(users[u]['node_total'])/users[u]['job_count'] ),
             str( float(users[u]['cpu_total'])/users[u]['job_count'] ) )
+        print "\t\tQueues: %s" % ",".join(users[u]['queues'])
         if len(users[u]['requests'])>0:
-            print "Request types: %s" % " ; ".join(set(users[u]['requests']))
-        if len(users[u]['queues'])>0:
-            print "Queues: %s\n" % ",".join(users[u]['queues'])
+            print "\t\tRequest types: %s" % " ; ".join(set(users[u]['requests']))
     print "-----------------------------"
 
     if nodestats:
