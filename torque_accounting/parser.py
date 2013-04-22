@@ -34,18 +34,26 @@ def parse_line(line, debug):
              print "Parsing property " + prop[0]
             # DBG: Deal with : separated node fields, but only for node flags
             if "nodes" in prop[0]:
-                flags=p.split(":")
+                thisprop=prop[0]
+                flags=prop[1].split(":")
                 if len(flags) > 1:
                     for f in flags:
                         subprop=f.split("=")
                         if len(subprop)==2:
                             properties[subprop[0]] = subprop[1]
                             if debug==1:
-                             print "Found subprop " + subprop[0] + " = " + subprop[1]
+                             print "Found subprop " + subprop[0] + " = " + subprop[1] + " (for prop " + thisprop + ")"
                         elif len(subprop)==1:
-                            properties[subprop[0]] = subprop[0]
-                            if debug==1:
-                             print "Found subprop " + subprop[0]
+                            propparts=thisprop.split(".")
+                            # Differentiate between numeric values and node flags ("gpu")
+                            try:
+                                properties[propparts[1]] = str(int(subprop[0]))
+                                if debug==1:
+                                 print "Found subprop " + propparts[1] + " = " + subprop[0] + " (for prop " + thisprop + ")"
+                            except ValueError:
+                                properties[subprop[0]] = subprop[0]
+                                if debug==1:
+                                 print "Found subprop " + subprop[0] + " = " + subprop[0] + " (for prop " + thisprop + ")"
 
     return (job_name, event_type, event_time, properties)
 
