@@ -8,6 +8,9 @@ import pprint
 import re
 from datetime import datetime, timedelta
 
+# For bytes_to_human()
+from math import log
+
 global printfmt
 printfmt = "%10s %10s  %7s  %5s  %19s  %12s %12s"
 debug = 0
@@ -90,19 +93,66 @@ def proplist_to_props(proplist):
             properties.add(p)
     return properties
 
+# Loosely based on a comment from here:
+# http://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size
+def bytes_to_human(num):
+    """Human friendly file size"""
+    unit_list = zip(['bytes', 'kB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2])
+    if num > 1:
+        exponent = min(int(log(num, 1024)), len(unit_list) - 1)
+        quotient = float(num) / 1024**exponent
+        unit, num_decimals = unit_list[exponent]
+        format_string = '{:.%sf} {}' % (num_decimals)
+        return format_string.format(quotient, unit)
+    if num == 0:
+        return '0 bytes'
+    if num == 1:
+        return '1 byte'
+
+# Loosely based on a comment from here:
+# http://stackoverflow.com/questions/13343700/bytes-to-human-readable-and-back-without-data-loss
+def human_to_bytes(size):
+    """Convert human data value to bytes"""
+    symbols = ('B', 'K', 'M', 'G', 'T', 'P')
+    unit = size[-1:].strip().upper()
+    if unit == "B":
+     # Strip off trailing 'b' and see if we've got another unit
+     size = size[:-1]
+     unit = size[-1:].strip().upper()
+     if unit in symbols:
+      num = size[:-1]
+     else:
+      unit = "B"
+      num = size
+    else:
+     # Assume size in bytes if no units specified?
+     unit = "B"
+     num = size
+    print "size input " + size + ", unit " + unit + ", num " + num
+    assert num.isdigit() and unit in symbols
+    num = float(num)
+    prefix = {symbols[0]:1}
+    for i, size in enumerate(symbols[1:]):
+     prefix[size] = 1 << (i+1)*10
+    return int(num * prefix[unit])
+        
+
 def print_summary(jobs, nodestats):
     users={}
     nodes={}
     properties={}
     queues={}
+    mem_per_core_count={}
     alljobs=len(jobs)
     jobs_complete=0
+    shared_jobs_complete=0
     total_job_time=timedelta(0)
     total_node_hours=timedelta(0)
     total_nodes_used = 0
     total_cpu_hours=timedelta(0)
     total_cpus_used = 0
     total_wait_time=timedelta(0)
+    total_memory_bytes_requested = 0
 
     for j in jobs:
         try:
@@ -132,7 +182,7 @@ def print_summary(jobs, nodestats):
                 try:
                     properties[p] += 1
                     if debug==1:
-                     print "Incrementing properties[" + p + "] = " + properties[p]
+                     print "Incrementing properties[" + p + "] = " + str(properties[p])
                 except KeyError:
                     properties[p] = 1
                     if debug==1:
@@ -140,18 +190,75 @@ def print_summary(jobs, nodestats):
         except KeyError:
             pass
 
+        # DBG: Try and determine whether this is shared-mem or MPI
+        shared_mem=0
+        try:
+         if "ppn" in jobs[j]['Resource_List.neednodes']:
+          if int(jobs[j]['ppn']) > 1:
+           print "Shared mem : ppn = " + jobs[j]['ppn']
+           shared_mem=1
+         if int(jobs[j]['Resource_List.tpn']) > 1:
+          print "Shared mem : tpn = " + jobs[j]['Resource_List.tpn']
+          shared_mem=1
+        except KeyError:
+         pass
+
+        # Convert memory values to bytes
+        jobs[j]['mem.qsub'] = human_to_bytes(jobs[j]['Resource_List.mem'])
+        jobs[j]['mem_per_core'] = jobs[j]['mem.qsub'] / procs
+        jobs[j]['mem.used'] = human_to_bytes(jobs[j]['resources_used.mem'])
+        jobs[j]['vmem.used'] = human_to_bytes(jobs[j]['resources_used.vmem'])
+
+        if jobs[j]['mem_per_core'] < human_to_bytes('1gb'):
+         try:
+          mem_per_core_count['1gb'] += 1
+         except KeyError:
+          mem_per_core_count['1gb'] = 1
+        elif jobs[j]['mem_per_core'] < human_to_bytes('2gb'):
+         try:
+          mem_per_core_count['2gb'] += 1
+         except KeyError:
+          mem_per_core_count['2gb'] = 1
+        elif jobs[j]['mem_per_core'] < human_to_bytes('4gb'):
+         try:
+          mem_per_core_count['4gb'] += 1
+         except KeyError:
+          mem_per_core_count['4gb'] = 1
+        elif jobs[j]['mem_per_core'] < human_to_bytes('8gb'):
+         try:
+          mem_per_core_count['8gb'] += 1
+         except KeyError:
+          mem_per_core_count['8gb'] = 1
+        elif jobs[j]['mem_per_core'] < human_to_bytes('16gb'):
+         try:
+          mem_per_core_count['16gb'] += 1
+         except KeyError:
+          mem_per_core_count['16gb'] = 1
+        elif jobs[j]['mem_per_core'] < human_to_bytes('32gb'):
+         try:
+          mem_per_core_count['32gb'] += 1
+         except KeyError:
+          mem_per_core_count['32gb'] = 1
+        
+
         q=jobs[j]['queue']
         try:
             queues[q]['job_count'] += 1
             queues[q]['wait_time'] += (start-qtime)
+            if shared_mem==1:
+             queues[q]['shared_mem_count'] += 1
         except KeyError:
             queues[q]={}
             queues[q]['job_count'] = 1
             queues[q]['wait_time'] = (start-qtime)
+            if shared_mem==1:
+             queues[q]['shared_mem_count'] = 1
                 
         u=jobs[j]['user']
         try:
             users[u]['job_count'] += 1
+            if shared_mem==1:
+             users[u]['shared_mem_count'] += 1
             users[u]['job_time'] += (finish-start)
             users[u]['node_time'] += int(jobs[j]['Resource_List.nodect'])*(finish-start)
             users[u]['node_total'] += int(jobs[j]['Resource_List.nodect'])
@@ -166,6 +273,8 @@ def print_summary(jobs, nodestats):
         except KeyError:
             users[u]={}
             users[u]['job_count'] = 1
+            if shared_mem==1:
+             users[u]['shared_mem_count'] = 1
             users[u]['job_time'] = (finish-start)
 
             if not 'Resource_List.nodect' in jobs[j]:
@@ -185,13 +294,17 @@ def print_summary(jobs, nodestats):
                 users[u]['requests'].append(jobs[j]['Resource_List.neednodes'])
             except:
                 pass
+
         jobs_complete += 1
+        if shared_mem==1:
+         shared_jobs_complete += 1
         total_job_time += (finish-start)
         total_nodes_used += int(jobs[j]['Resource_List.nodect'])
         total_node_hours += int(jobs[j]['Resource_List.nodect'])*(finish-start)
         total_cpu_hours += (procs)*(finish-start)
         total_cpus_used += procs
         total_wait_time += (start-qtime)
+        total_memory_bytes_requested += int(jobs[j]['mem.qsub'])
 
       
         # DBG notes: Other useful fields (for determining memory
@@ -219,7 +332,7 @@ def print_summary(jobs, nodestats):
 
     print "-----------------------------"
     print "Total jobs: %d" % alljobs
-    print "Total jobs completed: %d" % jobs_complete
+    print "Total jobs completed: %d (shared mem %d)" % (jobs_complete, shared_jobs_complete)
     print "Total job time: %s" % parser.strfdelta(total_job_time,"{days}:{hours}:{minutes}:{seconds}")
     print "Total node time used: %s" % parser.strfdelta(total_node_hours,"{days}:{hours}:{minutes}:{seconds}")
     print "Number of users: %d" % len(users)
@@ -232,6 +345,9 @@ def print_summary(jobs, nodestats):
     print "Average node time: %s" % parser.strfdelta( total_node_hours/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
     print "Average cpu time: %s" % parser.strfdelta( total_cpu_hours/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
     print "Average waiting time: %s" % parser.strfdelta( total_wait_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
+    print " "
+    print "Average memory per job: %s" % bytes_to_human((float(total_memory_bytes_requested)/int(jobs_complete)))
+    print "Average memory per core: %s" % bytes_to_human((float(total_memory_bytes_requested)/int(total_cpus_used)))
     print " "
     print "-----------------------------"
 
