@@ -128,7 +128,6 @@ def human_to_bytes(size):
      # Assume size in bytes if no units specified?
      unit = "B"
      num = size
-    print "size input " + size + ", unit " + unit + ", num " + num
     assert num.isdigit() and unit in symbols
     num = float(num)
     prefix = {symbols[0]:1}
@@ -145,14 +144,20 @@ def print_summary(jobs, nodestats):
     mem_per_core_count={}
     alljobs=len(jobs)
     jobs_complete=0
+    serial_jobs_complete=0
     shared_jobs_complete=0
     total_job_time=timedelta(0)
     total_node_hours=timedelta(0)
     total_nodes_used = 0
     total_cpu_hours=timedelta(0)
     total_cpus_used = 0
+    total_serial_cpu_hours=timedelta(0)
+    total_shared_cpu_hours=timedelta(0)
+    total_shared_cpus_used = 0
     total_wait_time=timedelta(0)
     total_memory_bytes_requested = 0
+    total_serial_memory_bytes_requested = 0
+    total_shared_memory_bytes_requested = 0
 
     for j in jobs:
         try:
@@ -195,10 +200,12 @@ def print_summary(jobs, nodestats):
         try:
          if "ppn" in jobs[j]['Resource_List.neednodes']:
           if int(jobs[j]['ppn']) > 1:
-           print "Shared mem : ppn = " + jobs[j]['ppn']
+           if debug==1:
+            print "Shared mem : ppn = " + jobs[j]['ppn']
            shared_mem=1
          if int(jobs[j]['Resource_List.tpn']) > 1:
-          print "Shared mem : tpn = " + jobs[j]['Resource_List.tpn']
+          if debug==1:
+           print "Shared mem : tpn = " + jobs[j]['Resource_List.tpn']
           shared_mem=1
         except KeyError:
          pass
@@ -209,50 +216,14 @@ def print_summary(jobs, nodestats):
         jobs[j]['mem.used'] = human_to_bytes(jobs[j]['resources_used.mem'])
         jobs[j]['vmem.used'] = human_to_bytes(jobs[j]['resources_used.vmem'])
 
-        if jobs[j]['mem_per_core'] < human_to_bytes('1gb'):
-         try:
-          mem_per_core_count['1gb'] += 1
-         except KeyError:
-          mem_per_core_count['1gb'] = 1
-        elif jobs[j]['mem_per_core'] < human_to_bytes('2gb'):
-         try:
-          mem_per_core_count['2gb'] += 1
-         except KeyError:
-          mem_per_core_count['2gb'] = 1
-        elif jobs[j]['mem_per_core'] < human_to_bytes('4gb'):
-         try:
-          mem_per_core_count['4gb'] += 1
-         except KeyError:
-          mem_per_core_count['4gb'] = 1
-        elif jobs[j]['mem_per_core'] < human_to_bytes('8gb'):
-         try:
-          mem_per_core_count['8gb'] += 1
-         except KeyError:
-          mem_per_core_count['8gb'] = 1
-        elif jobs[j]['mem_per_core'] < human_to_bytes('16gb'):
-         try:
-          mem_per_core_count['16gb'] += 1
-         except KeyError:
-          mem_per_core_count['16gb'] = 1
-        elif jobs[j]['mem_per_core'] < human_to_bytes('32gb'):
-         try:
-          mem_per_core_count['32gb'] += 1
-         except KeyError:
-          mem_per_core_count['32gb'] = 1
-        
-
         q=jobs[j]['queue']
         try:
             queues[q]['job_count'] += 1
             queues[q]['wait_time'] += (start-qtime)
-            if shared_mem==1:
-             queues[q]['shared_mem_count'] += 1
         except KeyError:
             queues[q]={}
             queues[q]['job_count'] = 1
             queues[q]['wait_time'] = (start-qtime)
-            if shared_mem==1:
-             queues[q]['shared_mem_count'] = 1
                 
         u=jobs[j]['user']
         try:
@@ -278,7 +249,8 @@ def print_summary(jobs, nodestats):
             users[u]['job_time'] = (finish-start)
 
             if not 'Resource_List.nodect' in jobs[j]:
-             sys.stderr.write("WARNING: %s missing Resource_list.nodect\n" % j)
+             if debug==1:
+              sys.stderr.write("WARNING: %s missing Resource_list.nodect\n" % j)
              print_job(j,jobs[j])
              jobs[j]['Resource_List.nodect']=1
 
@@ -296,8 +268,15 @@ def print_summary(jobs, nodestats):
                 pass
 
         jobs_complete += 1
+        if procs==1:
+         serial_jobs_complete += 1
+         total_serial_cpu_hours += (finish-start)
+         total_serial_memory_bytes_requested += int(jobs[j]['mem.qsub'])
         if shared_mem==1:
          shared_jobs_complete += 1
+         total_shared_cpu_hours += (procs)*(finish-start)
+         total_shared_cpus_used += procs
+         total_shared_memory_bytes_requested += int(jobs[j]['mem.qsub'])
         total_job_time += (finish-start)
         total_nodes_used += int(jobs[j]['Resource_List.nodect'])
         total_node_hours += int(jobs[j]['Resource_List.nodect'])*(finish-start)
@@ -330,25 +309,6 @@ def print_summary(jobs, nodestats):
                 pass
             print "\n"
 
-    print "-----------------------------"
-    print "Total jobs: %d" % alljobs
-    print "Total jobs completed: %d (shared mem %d)" % (jobs_complete, shared_jobs_complete)
-    print "Total job time: %s" % parser.strfdelta(total_job_time,"{days}:{hours}:{minutes}:{seconds}")
-    print "Total node time used: %s" % parser.strfdelta(total_node_hours,"{days}:{hours}:{minutes}:{seconds}")
-    print "Number of users: %d" % len(users)
-    print "Number of nodes used: %d" % len(nodes)
-    print "Number of cores used: %d" % total_cpus_used
-    print " "
-    print "Average nodes per job: %2.2f" % (float(total_nodes_used)/int(jobs_complete))
-    print "Average cores per job: %2.2f" % (float(total_cpus_used)/int(jobs_complete))
-    print "Average wallclock time: %s" % parser.strfdelta( total_job_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
-    print "Average node time: %s" % parser.strfdelta( total_node_hours/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
-    print "Average cpu time: %s" % parser.strfdelta( total_cpu_hours/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
-    print "Average waiting time: %s" % parser.strfdelta( total_wait_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
-    print " "
-    print "Average memory per job: %s" % bytes_to_human((float(total_memory_bytes_requested)/int(jobs_complete)))
-    print "Average memory per core: %s" % bytes_to_human((float(total_memory_bytes_requested)/int(total_cpus_used)))
-    print " "
     print "-----------------------------"
 
     propfmt = "%8s - %6s"
@@ -392,7 +352,40 @@ def print_summary(jobs, nodestats):
         for n in sorted(nodes, key=lambda x: nodes[x]['job_time'], reverse=True):
             print nodefmt % (n, str(nodes[n]['job_count']), 
             parser.strfdelta(nodes[n]['job_time'],"{days}:{hours}:{minutes}:{seconds}"))
+        print " "
+        print "-----------------------------"
 
+    mpi_jobs_complete = (jobs_complete - serial_jobs_complete - shared_jobs_complete)
+    total_mpi_cpus_used = (total_cpus_used - serial_jobs_complete - total_shared_cpus_used)
+    total_mpi_memory_bytes_requested = (total_memory_bytes_requested - total_serial_memory_bytes_requested - total_shared_memory_bytes_requested)
+
+    print " "
+    print "Total jobs: %d" % alljobs
+    print "Total jobs completed: %d (serial %d / MPI %d / SM %d)" % (jobs_complete, serial_jobs_complete, mpi_jobs_complete, shared_jobs_complete)
+    print "Total job time: %s" % parser.strfdelta(total_job_time,"{days}:{hours}:{minutes}:{seconds}")
+    print "Total node time used: %s" % parser.strfdelta(total_node_hours,"{days}:{hours}:{minutes}:{seconds}")
+    print "Number of users: %d" % len(users)
+    print "Number of nodes used: %d" % len(nodes)
+    print "Number of cores used: %d (serial %d / MPI %d / SM %d)" % (total_cpus_used, serial_jobs_complete, total_mpi_cpus_used, total_shared_cpus_used)
+    print " "
+    print "Average nodes per job: %2.2f" % (float(total_nodes_used)/int(jobs_complete))
+    print "Average cores per job: %2.2f (MPI %2.2f / SM %2.2f)" % ((float(total_cpus_used)/int(jobs_complete)), (float(total_mpi_cpus_used)/int(mpi_jobs_complete)), (float(total_shared_cpus_used)/int(shared_jobs_complete)))
+    print "Average wallclock time: %s" % parser.strfdelta( total_job_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
+    print "Average node time: %s" % parser.strfdelta( total_node_hours/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
+    print "Average cpu time: %s" % parser.strfdelta( total_cpu_hours/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
+    print "Average waiting time: %s" % parser.strfdelta( total_wait_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
+    print " "
+    print "Total memory requested: %s (serial %s, MPI %s, SM %s)" % (bytes_to_human(total_memory_bytes_requested), bytes_to_human(total_serial_memory_bytes_requested), bytes_to_human(total_mpi_memory_bytes_requested), bytes_to_human(total_shared_memory_bytes_requested))
+    print "Average memory per job: %s (serial %s, MPI %s, SM %s)" % (bytes_to_human((float(total_memory_bytes_requested)/int(jobs_complete))),
+     bytes_to_human(float(total_serial_memory_bytes_requested)/int(serial_jobs_complete)),
+     bytes_to_human(float(total_mpi_memory_bytes_requested)/int(mpi_jobs_complete)),
+     bytes_to_human(float(total_shared_memory_bytes_requested)/int(shared_jobs_complete)))
+    print "Average memory per core: %s (serial %s, MPI %s, SM %s)" % (bytes_to_human(float(total_memory_bytes_requested)/total_cpus_used), 
+     bytes_to_human(float(total_serial_memory_bytes_requested)/int(serial_jobs_complete)), 
+     bytes_to_human(float(total_mpi_memory_bytes_requested)/int(total_mpi_cpus_used)), 
+     bytes_to_human(float(total_shared_memory_bytes_requested)/int(total_shared_cpus_used)))
+    print " "
+    print "-----------------------------"
 
 #    print "DEBUG"
 #    print total_job_time
