@@ -131,8 +131,12 @@ def print_summary(jobs, nodestats):
             for p in props:
                 try:
                     properties[p] += 1
+                    if debug==1:
+                     print "Incrementing properties[" + p + "] = " + properties[p]
                 except KeyError:
                     properties[p] = 1
+                    if debug==1:
+                     print "Setting properties[" + p + "] = 1"
         except KeyError:
             pass
 
