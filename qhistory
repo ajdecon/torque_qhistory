@@ -87,6 +87,12 @@ def proplist_to_props(proplist):
             properties.add(p)
     return properties
 
+# Based on comment at:
+# http://stackoverflow.com/questions/783897/truncating-floats-in-python
+def trunc(f, n):
+     '''Truncates/pads a float f to n decimal places without rounding'''
+     return ('%.*f' % (n + 1, f))[:-1]
+
 # Loosely based on a comment from here:
 # http://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size
 def bytes_to_human(num):
@@ -315,7 +321,7 @@ def print_summary(jobs):
 
     queuefmt = "%16s - %6s - %13s"
     print queuefmt % ("QUEUE","COUNT","AVG WAIT TIME")
-    print queuefmt % ("============","======","=============")
+    print queuefmt % ("===============","======","=============")
     for q in sorted(queues, key=lambda x: queues[x], reverse=True):
      print queuefmt % (q, queues[q]['job_count'], 
          parser.strfdelta(queues[q]['wait_time']/queues[q]['job_count'],"{days}:{hours}:{minutes}:{seconds}"))
@@ -331,25 +337,26 @@ def print_summary(jobs):
 
     print "USERS"
     newfmt = "%15s - %4s - %13s - %13s - %13s - %13s"
-    print newfmt % ("USER","JOBS","WALLTIME","DED CORE TIME","AVG WAIT TIME","AVG CORES/JOB")
-    print newfmt % ("====","====","========","=============","=============","=============")
+    print newfmt % ("USER","JOBS","AVG CORES/JOB","WALLTIME","DED CORE TIME","AVG WAIT TIME")
+    print newfmt % ("====","====","=============","========","=============","=============")
     for u in sorted(users, key=lambda x: users[x]['cpu_time'], reverse=True):
         print newfmt % ( u, str(users[u]['job_count']),
+            str( trunc(float(users[u]['cpu_total'])/users[u]['job_count'], 3) ),
             parser.strfdelta(users[u]['job_time'],"{days}:{hours}:{minutes}:{seconds}"),
             parser.strfdelta(users[u]['cpu_time'],"{days}:{hours}:{minutes}:{seconds}"),
-            parser.strfdelta( users[u]['wait_time']/users[u]['job_count'], "{days}:{hours}:{minutes}:{seconds}"),
-            str( float(users[u]['cpu_total'])/users[u]['job_count'] ) )
+            parser.strfdelta( users[u]['wait_time']/users[u]['job_count'], "{days}:{hours}:{minutes}:{seconds}") )
     print "-----------------------------"
 
     print "USER WAIT STATS"
     newfmt = "%15s - %4s - %10s - %13s - %13s"
-    print newfmt % ("USER","JOBS","AVG WAIT/C", "AVG WAIT TIME", "AVG WAIT/USED")
+    print newfmt % ("USER","JOBS","AVG WAIT/C", "AVG WAIT TIME", "USED/AVG WAIT")
     print newfmt % ("====","====","==========","==============", "=============")
     for u in sorted(users, key=lambda x: users[x]['cpu_time'], reverse=True):
         print newfmt % ( u, str(users[u]['job_count']),
             parser.strfdelta( users[u]['wait_per_core']/users[u]['job_count'], "{days}:{hours}:{minutes}:{seconds}"),
             parser.strfdelta( users[u]['wait_time']/users[u]['job_count'], "{days}:{hours}:{minutes}:{seconds}"),
-            ( (users[u]['wait_time'].total_seconds()) / (users[u]['cpu_time'].total_seconds())) / users[u]['job_count'] * 10000)
+            ( (users[u]['cpu_time'].total_seconds()) / (users[u]['wait_time'].total_seconds())) / users[u]['job_count'])
+            #( (users[u]['wait_time'].total_seconds()) / (users[u]['cpu_time'].total_seconds())) / users[u]['job_count'] * 10000)
     print "-----------------------------"
 
     mpi_jobs_complete = (jobs_complete - serial_jobs_complete - shared_jobs_complete)
