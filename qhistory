@@ -28,7 +28,10 @@ def print_job(name,job):
         endt=job['events']['E']
         wait_time=job['wait_time']
         run_time=job['run_time']
-        nodect=job['Resource_List.nodect']
+        try:
+         nodect=job['Resource_List.nodect']
+        except:
+         nodect=1
         #print printfmt % (jid,user,queue,nodect,queuet,start,endt,wait_time,run_time)
         print printfmt % (jid,user,queue,nodect,start,wait_time,run_time)
     except KeyError:
@@ -41,6 +44,7 @@ def filter_by_user(username,jobs):
             if jobs[j]['user']==username:
                 ujobs[j]=jobs[j]
         except KeyError:
+            #print "Exception for filter_by_user(%s) for job %s" % (username,j)
             pass
     return ujobs
 
@@ -165,7 +169,22 @@ def print_summary(jobs, nodestats):
             start=datetime.strptime(jobs[j]['events']['S'],"%m/%d/%Y %H:%M:%S")
             finish=datetime.strptime(jobs[j]['events']['E'],"%m/%d/%Y %H:%M:%S")
         except:
+            try:
+             qtime=datetime.strptime(jobs[j]['events']['Q'],"%m/%d/%Y %H:%M:%S")
+            except:
+             print "Exception related to qtime event for job %s" % j
+            try:
+             start=datetime.strptime(jobs[j]['events']['S'],"%m/%d/%Y %H:%M:%S")
+            except:
+             print "Exception related to start time event for job %s" % j
+            try:
+             finish=datetime.strptime(jobs[j]['events']['E'],"%m/%d/%Y %H:%M:%S")
+            except:
+             print "Exception related to finish time event for job %s" % j
+
             continue
+
+        print "Processing job %s " % j
 
         # DBG: Figure out number of cores based on exec_host
         procs=exechost_to_procs(jobs[j]['exec_host'])
@@ -386,11 +405,19 @@ def print_summary(jobs, nodestats):
     print "Number of nodes used: %d" % len(nodes)
     print "Number of cores used: %d (serial %d / MPI %d / SM %d)" % (total_cpus_used, serial_jobs_complete, total_mpi_cpus_used, total_shared_cpus_used)
     print " "
-    print "Average nodes per job: %2.2f" % (float(total_nodes_used)/int(jobs_complete))
+
+    try:
+     print "Average nodes per job: %2.2f" % (float(total_nodes_used)/int(jobs_complete))
+    except:
+     print "Average nodes per job: 0.0"
 
     try:
      print "Average cores per job: %2.2f (MPI %2.2f / SM %2.2f)" % ((float(total_cpus_used)/int(jobs_complete)), (float(total_mpi_cpus_used)/int(mpi_jobs_complete)), (float(total_shared_cpus_used)/int(shared_jobs_complete)))
     except:
+     if jobs_complete==0:
+      avg_cores=0
+     else:
+      avg_cores=float(total_cpus_used)/int(jobs_complete)
      if mpi_jobs_complete==0:
       avg_cores_mpi=0.0
      else:
@@ -399,12 +426,19 @@ def print_summary(jobs, nodestats):
       avg_cores_shared=0.0
      else:
       avg_cores_shared=float(total_shared_cpus_used)/int(shared_jobs_complete)
-     print "Average cores per job: %2.2f (MPI %2.2f / SM %2.2f)" % ((float(total_cpus_used)/int(jobs_complete)), avg_cores_mpi, avg_cores_shared) 
+     print "Average cores per job: %2.2f (MPI %2.2f / SM %2.2f)" % (avg_cores, avg_cores_mpi, avg_cores_shared) 
 
-    print "Average wallclock time: %s" % parser.strfdelta( total_job_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
-    print "Average node time: %s" % parser.strfdelta( total_node_hours/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
-    print "Average cpu time: %s" % parser.strfdelta( total_cpu_hours/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
-    print "Average waiting time: %s" % parser.strfdelta( total_wait_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
+    try:
+     print "Average wallclock time: %s" % parser.strfdelta( total_job_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
+     print "Average node time: %s" % parser.strfdelta( total_node_hours/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
+     print "Average cpu time: %s" % parser.strfdelta( total_cpu_hours/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
+     print "Average waiting time: %s" % parser.strfdelta( total_wait_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
+    except:
+     print "Average wallclock time: 0:00:00:00"
+     print "Average node time: 0:00:00:00"
+     print "Average cpu time: 0:00:00:00"
+     print "Average waiting time: 0:00:00:00"
+
     print " "
     print "Total memory requested: %s (serial %s, MPI %s, SM %s)" % (bytes_to_human(total_memory_bytes_requested), bytes_to_human(total_serial_memory_bytes_requested), bytes_to_human(total_mpi_memory_bytes_requested), bytes_to_human(total_shared_memory_bytes_requested))
     try:
