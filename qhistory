@@ -164,33 +164,39 @@ def print_summary(jobs, nodestats):
     total_shared_memory_bytes_requested = 0
 
     for j in jobs:
+        # Pitch any job that doesn't have all 3 timing events (queued, start, finish)
         try:
             qtime=datetime.strptime(jobs[j]['events']['Q'],"%m/%d/%Y %H:%M:%S")
             start=datetime.strptime(jobs[j]['events']['S'],"%m/%d/%Y %H:%M:%S")
             finish=datetime.strptime(jobs[j]['events']['E'],"%m/%d/%Y %H:%M:%S")
         except:
-            try:
-             qtime=datetime.strptime(jobs[j]['events']['Q'],"%m/%d/%Y %H:%M:%S")
-            except:
-             print "Exception related to qtime event for job %s" % j
-            try:
-             start=datetime.strptime(jobs[j]['events']['S'],"%m/%d/%Y %H:%M:%S")
-            except:
-             print "Exception related to start time event for job %s" % j
-            try:
-             finish=datetime.strptime(jobs[j]['events']['E'],"%m/%d/%Y %H:%M:%S")
-            except:
-             print "Exception related to finish time event for job %s" % j
+            # Tell me why you pitched it... what's missing?
+            if debug==1:
+             try:
+              qtime=datetime.strptime(jobs[j]['events']['Q'],"%m/%d/%Y %H:%M:%S")
+             except:
+               print "Exception related to qtime event for job %s" % j
+             try:
+              start=datetime.strptime(jobs[j]['events']['S'],"%m/%d/%Y %H:%M:%S")
+             except:
+              print "Exception related to start time event for job %s" % j
+             try:
+              finish=datetime.strptime(jobs[j]['events']['E'],"%m/%d/%Y %H:%M:%S")
+             except:
+              print "Exception related to finish time event for job %s" % j
 
             continue
 
-        print "Processing job %s " % j
+        # Has all 3 time events, can proceed
+        if debug==1:
+            print "Processing job %s " % j
 
         # DBG: Figure out number of cores based on exec_host
         procs=exechost_to_procs(jobs[j]['exec_host'])
         if debug==1:
             print "Procs " + str(procs)
 
+        # Tally stats per node... is this useful?
         nodelist=exechost_to_nodes(jobs[j]['exec_host'])
         for n in nodelist:
             try:
@@ -200,6 +206,7 @@ def print_summary(jobs, nodestats):
                 nodes[n] = {}
                 nodes[n]['job_count'] = 1
                 nodes[n]['job_time'] = finish-start
+
         try:
             props=proplist_to_props(jobs[j]['Resource_List.neednodes'])
             for p in props:
@@ -271,7 +278,8 @@ def print_summary(jobs, nodestats):
             except:
                 pass
         except KeyError:
-            print "Triggered exception on users[%s]" % u
+            if debug==1:
+             print "Exception on users[%s], only a problem if you see it more than once" % u
             users[u]={}
             users[u]['job_count'] = 1
             if shared_mem==1:
