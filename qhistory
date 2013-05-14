@@ -183,6 +183,12 @@ def print_summary(jobs):
         # Has all 3 time events, can proceed
         if debug==1:
             print "Processing job %s " % j
+            print "qtime %s, stime %s, ftime %s" % (qtime, start, finish)
+            print "wait %s, run %s" % ((start-qtime), (finish-start))
+
+        if (start-qtime).days < 0:
+             print "ABORT: Invalid wait time on job %s" % j
+             exit
 
         # DBG: Figure out number of cores based on exec_host
         procs=exechost_to_procs(jobs[j]['exec_host'])
@@ -336,14 +342,15 @@ def print_summary(jobs):
     print "-----------------------------"
 
     print "USERS"
-    newfmt = "%15s - %4s - %13s - %13s - %13s - %13s"
-    print newfmt % ("USER","JOBS","AVG CORES/JOB","WALLTIME","DED CORE TIME","AVG WAIT TIME")
-    print newfmt % ("====","====","=============","========","=============","=============")
+    newfmt = "%15s - %4s - %13s - %13s - %13s - %13s - %13s"
+    print newfmt % ("USER","JOBS","AVG CORES/JOB","WALLTIME","DED CORE TIME","WAIT TIME","AVG WAIT TIME")
+    print newfmt % ("====","====","=============","========","=============","=========","=============")
     for u in sorted(users, key=lambda x: users[x]['cpu_time'], reverse=True):
         print newfmt % ( u, str(users[u]['job_count']),
             str( trunc(float(users[u]['cpu_total'])/users[u]['job_count'], 3) ),
             parser.strfdelta(users[u]['job_time'],"{days}:{hours}:{minutes}:{seconds}"),
             parser.strfdelta(users[u]['cpu_time'],"{days}:{hours}:{minutes}:{seconds}"),
+            parser.strfdelta( users[u]['wait_time'], "{days}:{hours}:{minutes}:{seconds}"),
             parser.strfdelta( users[u]['wait_time']/users[u]['job_count'], "{days}:{hours}:{minutes}:{seconds}") )
     print "-----------------------------"
 
@@ -351,12 +358,15 @@ def print_summary(jobs):
     newfmt = "%15s - %4s - %10s - %13s - %13s"
     print newfmt % ("USER","JOBS","AVG WAIT/C", "AVG WAIT TIME", "USED/AVG WAIT")
     print newfmt % ("====","====","==========","==============", "=============")
+    #newfmt = "%15s - %4s - %10s - %13s"
+    #print newfmt % ("USER","JOBS","AVG WAIT/C", "AVG WAIT TIME")
+    #print newfmt % ("====","====","==========","==============")
     for u in sorted(users, key=lambda x: users[x]['cpu_time'], reverse=True):
         print newfmt % ( u, str(users[u]['job_count']),
             parser.strfdelta( users[u]['wait_per_core']/users[u]['job_count'], "{days}:{hours}:{minutes}:{seconds}"),
             parser.strfdelta( users[u]['wait_time']/users[u]['job_count'], "{days}:{hours}:{minutes}:{seconds}"),
-            ( (users[u]['cpu_time'].total_seconds()) / (users[u]['wait_time'].total_seconds())) / users[u]['job_count'])
-            #( (users[u]['wait_time'].total_seconds()) / (users[u]['cpu_time'].total_seconds())) / users[u]['job_count'] * 10000)
+            #( users[u]['cpu_time'] / users[u]['wait_time']) / users[u]['job_count'])
+            ( (users[u]['wait_time'].total_seconds()) / (users[u]['cpu_time'].total_seconds())) / users[u]['job_count'] * 10000)
     print "-----------------------------"
 
     mpi_jobs_complete = (jobs_complete - serial_jobs_complete - shared_jobs_complete)
