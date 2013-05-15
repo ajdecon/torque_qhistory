@@ -32,7 +32,7 @@ def print_job(name,job):
         #print printfmt % (jid,user,queue,nodect,queuet,start,endt,wait_time,run_time)
         print printfmt % (jid,user,queue,procs,start,wait_time,run_time)
     except KeyError:
-        pass
+	pass
 
 def filter_by_user(username,jobs):
     ujobs={}
@@ -398,6 +398,7 @@ def print_summary(jobs):
       avg_cores_shared=float(total_shared_cpus_used)/int(shared_jobs_complete)
      print "Average cores per job: %2.2f (MPI %2.2f / SM %2.2f)" % (avg_cores, avg_cores_mpi, avg_cores_shared) 
 
+    # Print overall time stats
     try:
      print "Average wallclock time: %s" % parser.strfdelta( total_job_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
      print "Average cpu time: %s" % parser.strfdelta( total_cpu_hours/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
@@ -408,6 +409,7 @@ def print_summary(jobs):
      print "Average cpu time: 0:00:00:00"
      print "Average waiting time: 0:00:00:00"
 
+    # Print overall memory stats
     print " "
     print "Total memory requested: %s (serial %s, MPI %s, SM %s)" % (bytes_to_human(total_memory_bytes_requested), bytes_to_human(total_serial_memory_bytes_requested), bytes_to_human(total_mpi_memory_bytes_requested), bytes_to_human(total_shared_memory_bytes_requested))
     try:
@@ -416,14 +418,48 @@ def print_summary(jobs):
       bytes_to_human(float(total_mpi_memory_bytes_requested)/int(mpi_jobs_complete)),
       bytes_to_human(float(total_shared_memory_bytes_requested)/int(shared_jobs_complete)))
     except:
-     pass
+     if jobs_complete==0:
+      avg_mem=0
+     else:
+      avg_mem=float(total_memory_bytes_requested)/int(jobs_complete)
+     if serial_jobs_complete==0:
+      avg_mem_serial=0.0
+     else:
+      avg_mem_serial=float(total_serial_memory_bytes_requested)/int(serial_jobs_complete)
+     if mpi_jobs_complete==0:
+      avg_mem_mpi=0.0
+     else:
+      avg_mem_mpi=float(total_mpi_memory_bytes_requested)/int(mpi_jobs_complete)
+     if shared_jobs_complete==0:
+      avg_mem_shared=0.0
+     else:
+      avg_mem_shared=float(total_shared_memory_bytes_requested)/int(shared_jobs_complete)
+     print "Average memory per job: %s (serial %s, MPI %s, SM %s)" % (bytes_to_human(avg_mem), bytes_to_human(avg_mem_serial), bytes_to_human(avg_mem_mpi), bytes_to_human(avg_mem_shared))
+
     try:
      print "Average memory per core: %s (serial %s, MPI %s, SM %s)" % (bytes_to_human(float(total_memory_bytes_requested)/total_cpus_used), 
       bytes_to_human(float(total_serial_memory_bytes_requested)/int(serial_jobs_complete)), 
       bytes_to_human(float(total_mpi_memory_bytes_requested)/int(total_mpi_cpus_used)), 
       bytes_to_human(float(total_shared_memory_bytes_requested)/int(total_shared_cpus_used)))
     except:
-     pass
+     if jobs_complete==0:
+      avg_mem_per_core=0
+     else:
+      avg_mem_per_core=float(total_memory_bytes_requested)/int(total_cpus_used)
+     if serial_jobs_complete==0:
+      avg_mem_per_core_serial=0.0
+     else:
+      avg_mem_per_core_serial=float(total_serial_memory_bytes_requested)/int(serial_jobs_complete)
+     if mpi_jobs_complete==0:
+      avg_mem_per_core_mpi=0.0
+     else:
+      avg_mem_per_core_mpi=float(total_mpi_memory_bytes_requested)/int(total_mpi_cpus_used)
+     if shared_jobs_complete==0:
+      avg_mem_per_core_shared=0.0
+     else:
+      avg_mem_per_core_shared=float(total_shared_memory_bytes_requested)/int(total_shared_cpus_used)
+     print "Average memory per core: %s (serial %s, MPI %s, SM %s)" % (bytes_to_human(avg_mem_per_core), bytes_to_human(avg_mem_per_core_serial), bytes_to_human(avg_mem_per_core_mpi), bytes_to_human(avg_mem_per_core_shared))
+
     print " "
     print "-----------------------------"
 
