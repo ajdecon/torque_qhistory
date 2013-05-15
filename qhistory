@@ -32,7 +32,7 @@ def print_job(name,job):
         #print printfmt % (jid,user,queue,nodect,queuet,start,endt,wait_time,run_time)
         print printfmt % (jid,user,queue,procs,start,wait_time,run_time)
     except KeyError:
-	pass
+       	pass
 
 def filter_by_user(username,jobs):
     ujobs={}
