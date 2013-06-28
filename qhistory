@@ -11,10 +11,23 @@ from datetime import datetime, timedelta
 # For bytes_to_human()
 from math import log
 
+# For histogram plots
+import numpy as np
+import matplotlib.pyplot as plt
+import pylab
+
+# NOTE: save plot to file
+# http://stackoverflow.com/questions/9622163/matplotlib-save-plot-to-image-file-instead-of-displaying-it-so-can-be-used-in-b
+#pylab.savefig('foo.png', bbox_inches=0)
+
 global printfmt
 printfmt = "%10s %10s  %7s  %5s  %19s  %12s %12s"
 debug = 0
 
+global memory_bins
+#memory_bins_mb = ([512,1024,2048,3072,4096,5120,6144,7168,8192,16384,32768])
+memory_bins_mb = range(0,32768,1024)
+memory_bins_bytes = [ elem*1024*1024 for elem in memory_bins_mb ]
 
 def print_job(name,job):
     try:
@@ -141,6 +154,10 @@ def print_summary(jobs):
     properties={}
     queues={}
     mem_per_core_count={}
+    mem_per_core_all=[]
+    mem_all=[]
+    mem_per_core_all_mb=[]
+    mem_all_mb=[]
     alljobs=len(jobs)
     jobs_complete=0
     serial_jobs_complete=0
@@ -227,6 +244,11 @@ def print_summary(jobs):
         # Convert memory values to bytes
         jobs[j]['mem.qsub'] = human_to_bytes(jobs[j]['Resource_List.mem'])
         jobs[j]['mem_per_core'] = jobs[j]['mem.qsub'] / procs
+        mem_per_core_all.append(jobs[j]['mem_per_core'])
+        mem_per_core_all_mb.append(jobs[j]['mem_per_core'] / (1024*1024))
+        mem_all.append(jobs[j]['mem.qsub'])
+        mem_all_mb.append(jobs[j]['mem.qsub'] / (1024*1024))
+
         jobs[j]['mem.used'] = human_to_bytes(jobs[j]['resources_used.mem'])
         jobs[j]['vmem.used'] = human_to_bytes(jobs[j]['resources_used.vmem'])
 
@@ -355,18 +377,18 @@ def print_summary(jobs):
     print "-----------------------------"
 
     print "USER WAIT STATS"
-    newfmt = "%15s - %4s - %10s - %13s - %13s"
-    print newfmt % ("USER","JOBS","AVG WAIT/C", "AVG WAIT TIME", "USED/AVG WAIT")
-    print newfmt % ("====","====","==========","==============", "=============")
+    newfmt = "%15s - %4s - %13s - %10s - %13s - %13s"
+    print newfmt % ("USER","JOBS","AVG CPU","AVG WAIT/C", "AVG WAIT TIME", "FAIRNESS")
+    print newfmt % ("====","====","===","==========","==============", "============")
     #newfmt = "%15s - %4s - %10s - %13s"
     #print newfmt % ("USER","JOBS","AVG WAIT/C", "AVG WAIT TIME")
     #print newfmt % ("====","====","==========","==============")
     for u in sorted(users, key=lambda x: users[x]['cpu_time'], reverse=True):
         print newfmt % ( u, str(users[u]['job_count']),
+            parser.strfdelta((users[u]['cpu_time']/users[u]['job_count']),"{days}:{hours}:{minutes}:{seconds}"),
             parser.strfdelta( users[u]['wait_per_core']/users[u]['job_count'], "{days}:{hours}:{minutes}:{seconds}"),
             parser.strfdelta( users[u]['wait_time']/users[u]['job_count'], "{days}:{hours}:{minutes}:{seconds}"),
-            #( users[u]['cpu_time'] / users[u]['wait_time']) / users[u]['job_count'])
-            ( (users[u]['wait_time'].total_seconds()) / (users[u]['cpu_time'].total_seconds())) / users[u]['job_count'] * 10000)
+            ( (users[u]['cpu_time'].total_seconds()) / ( (users[u]['wait_time'].total_seconds()) / users[u]['job_count']) ) )
     print "-----------------------------"
 
     mpi_jobs_complete = (jobs_complete - serial_jobs_complete - shared_jobs_complete)
@@ -402,12 +424,18 @@ def print_summary(jobs):
     try:
      print "Average wallclock time: %s" % parser.strfdelta( total_job_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
      print "Average cpu time: %s" % parser.strfdelta( total_cpu_hours/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
-     print "Average waiting time: %s" % parser.strfdelta( total_wait_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
+     print "Average wait time: %s" % parser.strfdelta( total_wait_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
     except:
      print "Average wallclock time: 0:00:00:00"
      print "Average node time: 0:00:00:00"
      print "Average cpu time: 0:00:00:00"
-     print "Average waiting time: 0:00:00:00"
+     print "Average wait time: 0:00:00:00"
+
+    try:
+     print "Average fairness metric: %s" % ( (total_cpu_hours.total_seconds()) / ( (total_wait_time.total_seconds()) / jobs_complete ) )
+     #( (users[u]['cpu_time'].total_seconds()) / ( (users[u]['wait_time'].total_seconds()) / users[u]['job_count']) ) )
+    except:
+     print "Average fairness metric: NA"
 
     # Print overall memory stats
     print " "
@@ -463,6 +491,28 @@ def print_summary(jobs):
     print " "
     print "-----------------------------"
 
+    fig = plt.figure()
+    mem_histo = fig.add_subplot(111)
+    mem_histo.hist(mem_all, bins=memory_bins_bytes)
+    pylab.savefig('mem_histo.png', bbox_inches=0)
+
+    fig = plt.figure()
+    mem_histo = fig.add_subplot(111)
+    mem_histo.hist(mem_per_core_all, bins=memory_bins_bytes)
+    pylab.savefig('mem_per_core_histo.png', bbox_inches=0)
+
+    fig = plt.figure()
+    mem_histo = fig.add_subplot(111)
+    mem_histo.hist(mem_all_mb, bins=memory_bins_mb)
+    pylab.savefig('mem_histo_mb.png', bbox_inches=0)
+
+    fig = plt.figure()
+    mem_histo = fig.add_subplot(111)
+    mem_histo.hist(mem_per_core_all_mb, bins=memory_bins_mb)
+    pylab.savefig('mem_per_core_histo_mb.png', bbox_inches=0)
+
+    #mem_histo_sum.hist(mem_per_core_all, bins=memory_bins_bytes, cumulative=True)
+    #mem_histo_n.hist(mem_per_core_all, bins=memory_bins_bytes, normed=True)
 #    print "DEBUG"
 #    print total_job_time
 #    print users
