@@ -11,14 +11,6 @@ from datetime import datetime, timedelta
 # For bytes_to_human()
 from math import log
 
-# For histogram plots
-import numpy as np
-import matplotlib.pyplot as plt
-import pylab
-
-# NOTE: save plot to file
-# http://stackoverflow.com/questions/9622163/matplotlib-save-plot-to-image-file-instead-of-displaying-it-so-can-be-used-in-b
-#pylab.savefig('foo.png', bbox_inches=0)
 
 global printfmt
 printfmt = "%10s %10s  %7s  %5s  %19s  %12s %12s"
@@ -207,6 +199,14 @@ def print_summary(jobs):
              print "ABORT: Invalid wait time on job %s" % j
              exit
 
+        # HACK: Make sure job actually has resources_used.* fields included.
+        # Occasionaly you get a job that has an E event, but torque doesn't
+        # report resources_used.* because it terminates too quickly?
+        try:
+             jobs[j]['mem.used'] = human_to_bytes(jobs[j]['resources_used.mem'])
+        except:
+             continue
+
         # DBG: Figure out number of cores based on exec_host
         procs=exechost_to_procs(jobs[j]['exec_host'])
         if debug==1:
@@ -388,7 +388,7 @@ def print_summary(jobs):
             parser.strfdelta((users[u]['cpu_time']/users[u]['job_count']),"{days}:{hours}:{minutes}:{seconds}"),
             parser.strfdelta( users[u]['wait_per_core']/users[u]['job_count'], "{days}:{hours}:{minutes}:{seconds}"),
             parser.strfdelta( users[u]['wait_time']/users[u]['job_count'], "{days}:{hours}:{minutes}:{seconds}"),
-            ( (users[u]['cpu_time'].total_seconds()) / ( (users[u]['wait_time'].total_seconds()) / users[u]['job_count']) ) )
+            ( ( (users[u]['cpu_time'].total_seconds()) / ( (users[u]['wait_time'].total_seconds()) / users[u]['job_count']) ) / 3600 ) )
     print "-----------------------------"
 
     mpi_jobs_complete = (jobs_complete - serial_jobs_complete - shared_jobs_complete)
@@ -432,7 +432,7 @@ def print_summary(jobs):
      print "Average wait time: 0:00:00:00"
 
     try:
-     print "Average fairness metric: %s" % ( (total_cpu_hours.total_seconds()) / ( (total_wait_time.total_seconds()) / jobs_complete ) )
+     print "Average fairness metric: %s" % ( ( (total_cpu_hours.total_seconds()) / ( (total_wait_time.total_seconds()) / jobs_complete ) ) / 3600 )
      #( (users[u]['cpu_time'].total_seconds()) / ( (users[u]['wait_time'].total_seconds()) / users[u]['job_count']) ) )
     except:
      print "Average fairness metric: NA"
@@ -491,25 +491,6 @@ def print_summary(jobs):
     print " "
     print "-----------------------------"
 
-    fig = plt.figure()
-    mem_histo = fig.add_subplot(111)
-    mem_histo.hist(mem_all, bins=memory_bins_bytes)
-    pylab.savefig('mem_histo.png', bbox_inches=0)
-
-    fig = plt.figure()
-    mem_histo = fig.add_subplot(111)
-    mem_histo.hist(mem_per_core_all, bins=memory_bins_bytes)
-    pylab.savefig('mem_per_core_histo.png', bbox_inches=0)
-
-    fig = plt.figure()
-    mem_histo = fig.add_subplot(111)
-    mem_histo.hist(mem_all_mb, bins=memory_bins_mb)
-    pylab.savefig('mem_histo_mb.png', bbox_inches=0)
-
-    fig = plt.figure()
-    mem_histo = fig.add_subplot(111)
-    mem_histo.hist(mem_per_core_all_mb, bins=memory_bins_mb)
-    pylab.savefig('mem_per_core_histo_mb.png', bbox_inches=0)
 
     #mem_histo_sum.hist(mem_per_core_all, bins=memory_bins_bytes, cumulative=True)
     #mem_histo_n.hist(mem_per_core_all, bins=memory_bins_bytes, normed=True)
