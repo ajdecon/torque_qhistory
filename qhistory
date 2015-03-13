@@ -8,10 +8,18 @@ import pprint
 import re
 from datetime import datetime, timedelta
 
+# For bytes_to_human()
+from math import log
+
+
 global printfmt
 printfmt = "%10s %10s  %7s  %5s  %19s  %12s %12s"
+debug = 0
 
-
+global memory_bins
+#memory_bins_mb = ([512,1024,2048,3072,4096,5120,6144,7168,8192,16384,32768])
+memory_bins_mb = range(0,32768,1024)
+memory_bins_bytes = [ elem*1024*1024 for elem in memory_bins_mb ]
 
 def print_job(name,job):
     try:
@@ -25,11 +33,11 @@ def print_job(name,job):
         endt=job['events']['E']
         wait_time=job['wait_time']
         run_time=job['run_time']
-        nodect=job['Resource_List.nodect']
+        procs=exechost_to_procs(jobs[j]['exec_host'])
         #print printfmt % (jid,user,queue,nodect,queuet,start,endt,wait_time,run_time)
-        print printfmt % (jid,user,queue,nodect,start,wait_time,run_time)
+        print printfmt % (jid,user,queue,procs,start,wait_time,run_time)
     except KeyError:
-        pass
+       	pass
 
 def filter_by_user(username,jobs):
     ujobs={}
@@ -38,6 +46,7 @@ def filter_by_user(username,jobs):
             if jobs[j]['user']==username:
                 ujobs[j]=jobs[j]
         except KeyError:
+            #print "Exception for filter_by_user(%s) for job %s" % (username,j)
             pass
     return ujobs
 
@@ -58,7 +67,7 @@ def print_nodes(job):
         print "This job has no exec_host information!"
 
 def print_header():
-    print printfmt % ("Job ID","Username","Queue","Nodes", "Start Time","Waiting","Running")
+    print printfmt % ("Job ID","Username","Queue","Cores", "Start Time","Waiting","Running")
     print printfmt % ("======","========","=====","=====", "==========","=======","=======")
 
 def print_full_job(jobid,jobs):
@@ -72,12 +81,8 @@ def print_full_job(jobid,jobs):
 def jobname_to_int(jobname):
     return int(jobname.split('.')[0])
 
-def exechost_to_nodes(exec_host_string):
-    nodes=set()
-    ehosts=exec_host_string.split('+')
-    for eh in ehosts:
-        nodes.add(eh.split('/')[0])
-    return nodes
+def exechost_to_procs(exec_host_string):
+    return len(exec_host_string.split('+'))
 
 def proplist_to_props(proplist):
     properties=set()
@@ -87,66 +92,204 @@ def proplist_to_props(proplist):
             properties.add(p)
     return properties
 
+# Based on comment at:
+# http://stackoverflow.com/questions/783897/truncating-floats-in-python
+def trunc(f, n):
+     '''Truncates/pads a float f to n decimal places without rounding'''
+     return ('%.*f' % (n + 1, f))[:-1]
+
+# Loosely based on a comment from here:
+# http://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size
+def bytes_to_human(num):
+    """Human friendly file size"""
+    unit_list = zip(['bytes', 'kB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2])
+    if num > 1:
+        exponent = min(int(log(num, 1024)), len(unit_list) - 1)
+        quotient = float(num) / 1024**exponent
+        unit, num_decimals = unit_list[exponent]
+        format_string = '{:.%sf} {}' % (num_decimals)
+        return format_string.format(quotient, unit)
+    if num == 0:
+        return '0 bytes'
+    if num == 1:
+        return '1 byte'
+
+# Loosely based on a comment from here:
+# http://stackoverflow.com/questions/13343700/bytes-to-human-readable-and-back-without-data-loss
+def human_to_bytes(size):
+    """Convert human data value to bytes"""
+    symbols = ('B', 'K', 'M', 'G', 'T', 'P')
+    unit = size[-1:].strip().upper()
+    if unit == "B":
+     # Strip off trailing 'b' and see if we've got another unit
+     size = size[:-1]
+     unit = size[-1:].strip().upper()
+     if unit in symbols:
+      num = size[:-1]
+     else:
+      unit = "B"
+      num = size
+    else:
+     # Assume size in bytes if no units specified?
+     unit = "B"
+     num = size
+    assert num.isdigit() and unit in symbols
+    num = float(num)
+    prefix = {symbols[0]:1}
+    for i, size in enumerate(symbols[1:]):
+     prefix[size] = 1 << (i+1)*10
+    return int(num * prefix[unit])
+        
+
 def print_summary(jobs):
     users={}
-    nodes={}
     properties={}
     queues={}
+    mem_per_core_count={}
+    mem_per_core_all=[]
+    mem_all=[]
+    mem_per_core_all_mb=[]
+    mem_all_mb=[]
     alljobs=len(jobs)
     jobs_complete=0
+    serial_jobs_complete=0
+    shared_jobs_complete=0
     total_job_time=timedelta(0)
-    total_node_hours=timedelta(0)
-    total_nodes_used = 0
+    total_cpu_hours=timedelta(0)
+    total_cpus_used = 0
+    total_serial_cpu_hours=timedelta(0)
+    total_shared_cpu_hours=timedelta(0)
+    total_shared_cpus_used = 0
     total_wait_time=timedelta(0)
+    total_memory_bytes_requested = 0
+    total_serial_memory_bytes_requested = 0
+    total_shared_memory_bytes_requested = 0
 
     for j in jobs:
+        # Pitch any job that doesn't have all 3 timing events (queued, start, finish)
         try:
             qtime=datetime.strptime(jobs[j]['events']['Q'],"%m/%d/%Y %H:%M:%S")
             start=datetime.strptime(jobs[j]['events']['S'],"%m/%d/%Y %H:%M:%S")
             finish=datetime.strptime(jobs[j]['events']['E'],"%m/%d/%Y %H:%M:%S")
         except:
+            # Tell me why you pitched it... what's missing?
+            if debug==1:
+             try:
+              qtime=datetime.strptime(jobs[j]['events']['Q'],"%m/%d/%Y %H:%M:%S")
+             except:
+               print "Exception related to qtime event for job %s" % j
+             try:
+              start=datetime.strptime(jobs[j]['events']['S'],"%m/%d/%Y %H:%M:%S")
+             except:
+              print "Exception related to start time event for job %s" % j
+             try:
+              finish=datetime.strptime(jobs[j]['events']['E'],"%m/%d/%Y %H:%M:%S")
+             except:
+              print "Exception related to finish time event for job %s" % j
+
             continue
-        nodelist=exechost_to_nodes(jobs[j]['exec_host'])
-        for n in nodelist:
-            try:
-                nodes[n]['job_count'] += 1
-                nodes[n]['job_time'] += (finish-start)
-            except KeyError:
-                nodes[n] = {}
-                nodes[n]['job_count'] = 1
-                nodes[n]['job_time'] = finish-start
+
+        # Has all 3 time events, can proceed
+        if debug==1:
+            print "Processing job %s " % j
+            print "qtime %s, stime %s, ftime %s" % (qtime, start, finish)
+            print "wait %s, run %s" % ((start-qtime), (finish-start))
+
+        if (start-qtime).days < 0:
+             print "ABORT: Invalid wait time on job %s" % j
+             exit
+
+        # HACK: Make sure job actually has resources_used.* fields included.
+        # Occasionaly you get a job that has an E event, but torque doesn't
+        # report resources_used.* because it terminates too quickly?
+        try:
+             jobs[j]['mem.used'] = human_to_bytes(jobs[j]['resources_used.mem'])
+        except:
+             continue
+
+        # DBG: Figure out number of cores based on exec_host
+        procs=exechost_to_procs(jobs[j]['exec_host'])
+        if debug==1:
+            print "Procs " + str(procs)
+
         try:
             props=proplist_to_props(jobs[j]['Resource_List.neednodes'])
             for p in props:
                 try:
                     properties[p] += 1
+                    if debug==1:
+                     print "Incrementing properties[" + p + "] = " + str(properties[p])
                 except KeyError:
                     properties[p] = 1
+                    if debug==1:
+                     print "Setting properties[" + p + "] = 1"
         except KeyError:
             pass
 
+        # DBG: Try and determine whether this is shared-mem or MPI
+        shared_mem=0
         try:
-            queues[jobs[j]['queue']] += 1
+         if "ppn" in jobs[j]['Resource_List.neednodes']:
+          if int(jobs[j]['ppn']) > 1:
+           if debug==1:
+            print "Shared mem : ppn = " + jobs[j]['ppn']
+           shared_mem=1
+         if int(jobs[j]['Resource_List.tpn']) > 1:
+          if debug==1:
+           print "Shared mem : tpn = " + jobs[j]['Resource_List.tpn']
+          shared_mem=1
         except KeyError:
-            queues[jobs[j]['queue']] = 1
+         pass
+
+        # Convert memory values to bytes
+        jobs[j]['mem.qsub'] = human_to_bytes(jobs[j]['Resource_List.mem'])
+        jobs[j]['mem_per_core'] = jobs[j]['mem.qsub'] / procs
+        mem_per_core_all.append(jobs[j]['mem_per_core'])
+        mem_per_core_all_mb.append(jobs[j]['mem_per_core'] / (1024*1024))
+        mem_all.append(jobs[j]['mem.qsub'])
+        mem_all_mb.append(jobs[j]['mem.qsub'] / (1024*1024))
+
+        jobs[j]['mem.used'] = human_to_bytes(jobs[j]['resources_used.mem'])
+        jobs[j]['vmem.used'] = human_to_bytes(jobs[j]['resources_used.vmem'])
+
+        q=jobs[j]['queue']
+        try:
+            queues[q]['job_count'] += 1
+            queues[q]['wait_time'] += (start-qtime)
+        except KeyError:
+            queues[q]={}
+            queues[q]['job_count'] = 1
+            queues[q]['wait_time'] = (start-qtime)
                 
         u=jobs[j]['user']
         try:
             users[u]['job_count'] += 1
+            if shared_mem==1:
+             users[u]['shared_mem_count'] += 1
             users[u]['job_time'] += (finish-start)
-            users[u]['node_time'] += int(jobs[j]['Resource_List.nodect'])*(finish-start)
-            users[u]['node_total'] += int(jobs[j]['Resource_List.nodect'])
+            users[u]['cpu_time'] += (procs)*(finish-start)
+            users[u]['cpu_total'] += procs
+            users[u]['wait_time'] += (start-qtime)
+            users[u]['wait_per_core'] += (start-qtime) / procs
             users[u]['queues'].add(jobs[j]['queue'])
             try: 
                 users[u]['requests'].append(jobs[j]['Resource_List.neednodes'])
             except:
                 pass
         except KeyError:
+            if debug==1:
+             print "Exception on users[%s], only a problem if you see it more than once" % u
             users[u]={}
             users[u]['job_count'] = 1
+            if shared_mem==1:
+             users[u]['shared_mem_count'] = 1
             users[u]['job_time'] = (finish-start)
-            users[u]['node_time'] = int(jobs[j]['Resource_List.nodect'])*(finish-start)
-            users[u]['node_total'] = int(jobs[j]['Resource_List.nodect'])
+
+
+            users[u]['cpu_time'] = int(procs)*(finish-start)
+            users[u]['cpu_total'] = procs
+            users[u]['wait_time'] = (start-qtime)
+            users[u]['wait_per_core'] = (start-qtime) / procs
             users[u]['queues'] = set()
             users[u]['queues'].add(jobs[j]['queue'])
             users[u]['requests'] = []
@@ -154,26 +297,47 @@ def print_summary(jobs):
                 users[u]['requests'].append(jobs[j]['Resource_List.neednodes'])
             except:
                 pass
-        jobs_complete += 1
-        total_job_time += (finish-start)
-        total_nodes_used += int(jobs[j]['Resource_List.nodect'])
-        total_node_hours += int(jobs[j]['Resource_List.nodect'])*(finish-start)
-        total_wait_time += (start-qtime)
-        
 
-    print "-----------------------------"
-    print "Total jobs: %d" % alljobs
-    print "Total jobs completed: %d" % jobs_complete
-    print "Total job time: %s" % parser.strfdelta(total_job_time,"{days}:{hours}:{minutes}:{seconds}")
-    print "Total node time used: %s" % parser.strfdelta(total_node_hours,"{days}:{hours}:{minutes}:{seconds}")
-    print "Number of users: %d" % len(users)
-    print "Number of nodes used: %d" % len(nodes)
-    print " "
-    print "Average nodes per job: %2.2f" % (float(total_nodes_used)/int(jobs_complete))
-    print "Average wallclock time: %s" % parser.strfdelta( total_job_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
-    print "Average node time: %s" % parser.strfdelta( total_node_hours/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
-    print "Average waiting time: %s" % parser.strfdelta( total_wait_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
-    print " "
+        jobs_complete += 1
+        if procs==1:
+         serial_jobs_complete += 1
+         total_serial_cpu_hours += (finish-start)
+         total_serial_memory_bytes_requested += int(jobs[j]['mem.qsub'])
+        if shared_mem==1:
+         shared_jobs_complete += 1
+         total_shared_cpu_hours += (procs)*(finish-start)
+         total_shared_cpus_used += procs
+         total_shared_memory_bytes_requested += int(jobs[j]['mem.qsub'])
+        total_job_time += (finish-start)
+        total_cpu_hours += (procs)*(finish-start)
+        total_cpus_used += procs
+        total_wait_time += (start-qtime)
+        total_memory_bytes_requested += int(jobs[j]['mem.qsub'])
+
+      
+        # DBG notes: Other useful fields (for determining memory
+        # requested/used, GPUs, SM vs MPI, etc)
+        # Resource_List.mem=15gb 
+        # Resource_List.nodes=1:ppn=1 
+        # Resource_List.partition=dmc 
+        # resources_used.mem=1919948kb 
+        # resources_used.vmem=1995544kb 
+
+        # Waited more than 12 hours to start?
+        if debug==1:
+         if parser.strfdelta((start-qtime),"{hours}") > 43200:
+            print "> 12 hours qtime: "
+            try:
+                print "nodes %s" % jobs[j]['Resource_List.neednodes']
+            except:
+                pass
+            print ", mem %s" % jobs[j]['Resource_List.mem']
+            try:
+                print ", partition %s" % jobs[j]['Resource_List.partition']
+            except:
+                pass
+            print "\n"
+
     print "-----------------------------"
 
     propfmt = "%8s - %6s"
@@ -183,40 +347,155 @@ def print_summary(jobs):
         print propfmt % (p, properties[p])
     print "-----------------------------"
 
-    queuefmt = "%12s - %6s"
-    print queuefmt % ("QUEUE","COUNT")
-    print queuefmt % ("============","======")
+    queuefmt = "%16s - %6s - %13s"
+    print queuefmt % ("QUEUE","COUNT","AVG WAIT TIME")
+    print queuefmt % ("===============","======","=============")
     for q in sorted(queues, key=lambda x: queues[x], reverse=True):
-        print queuefmt % (q, queues[q])
+     print queuefmt % (q, queues[q]['job_count'], 
+         parser.strfdelta(queues[q]['wait_time']/queues[q]['job_count'],"{days}:{hours}:{minutes}:{seconds}"))
     print "-----------------------------"
 
+    print "USERS REQUEST"
+    for u in sorted(users, key=lambda x: users[x]['cpu_time'], reverse=True):
+     print "User: %s" % u
+     print "\tQueues: %s" % ",".join(users[u]['queues'])
+     if len(users[u]['requests'])>0:
+      print "\tRequest types: %s" % " ; ".join(set(users[u]['requests']))
+    print "-----------------------------"
 
     print "USERS"
-    newfmt = "%15s - %4s - %10s - %10s - %13s - %20s"
-    print newfmt % ("USER","JOBS","JOB TIME","NODE TIME","AVG NODES/JOB","QUEUES")
-    print newfmt % ("====","====","========","=========","=============","======")
-    for u in sorted(users, key=lambda x: users[x]['node_time'], reverse=True):
+    newfmt = "%15s - %4s - %13s - %13s - %13s - %13s - %13s"
+    print newfmt % ("USER","JOBS","AVG CORES/JOB","WALLTIME","DED CORE TIME","WAIT TIME","AVG WAIT TIME")
+    print newfmt % ("====","====","=============","========","=============","=========","=============")
+    for u in sorted(users, key=lambda x: users[x]['cpu_time'], reverse=True):
         print newfmt % ( u, str(users[u]['job_count']),
+            str( trunc(float(users[u]['cpu_total'])/users[u]['job_count'], 3) ),
             parser.strfdelta(users[u]['job_time'],"{days}:{hours}:{minutes}:{seconds}"),
-            parser.strfdelta(users[u]['node_time'],"{days}:{hours}:{minutes}:{seconds}"),
-            str( float(users[u]['node_total'])/users[u]['job_count'] ),
-            ",".join(users[u]['queues']) )
-        if len(users[u]['requests'])>0:
-            print "Request types: %s\n" % " ; ".join(set(users[u]['requests']))
+            parser.strfdelta(users[u]['cpu_time'],"{days}:{hours}:{minutes}:{seconds}"),
+            parser.strfdelta( users[u]['wait_time'], "{days}:{hours}:{minutes}:{seconds}"),
+            parser.strfdelta( users[u]['wait_time']/users[u]['job_count'], "{days}:{hours}:{minutes}:{seconds}") )
     print "-----------------------------"
 
-    print "NODES"
-    nodefmt = "%15s - %4s - %10s"
-    print nodefmt % ("NODE","JOBS","JOB TIME")
-    print nodefmt % ("====","====","========")
-    for n in sorted(nodes, key=lambda x: nodes[x]['job_time'], reverse=True):
-        print nodefmt % (n, str(nodes[n]['job_count']), 
-        parser.strfdelta(nodes[n]['job_time'],"{days}:{hours}:{minutes}:{seconds}"))
+    print "USER WAIT STATS"
+    newfmt = "%15s - %4s - %13s - %10s - %13s - %13s"
+    print newfmt % ("USER","JOBS","AVG CPU","AVG WAIT/C", "AVG WAIT TIME", "FAIRNESS")
+    print newfmt % ("====","====","===","==========","==============", "============")
+    #newfmt = "%15s - %4s - %10s - %13s"
+    #print newfmt % ("USER","JOBS","AVG WAIT/C", "AVG WAIT TIME")
+    #print newfmt % ("====","====","==========","==============")
+    for u in sorted(users, key=lambda x: users[x]['cpu_time'], reverse=True):
+        print newfmt % ( u, str(users[u]['job_count']),
+            parser.strfdelta((users[u]['cpu_time']/users[u]['job_count']),"{days}:{hours}:{minutes}:{seconds}"),
+            parser.strfdelta( users[u]['wait_per_core']/users[u]['job_count'], "{days}:{hours}:{minutes}:{seconds}"),
+            parser.strfdelta( users[u]['wait_time']/users[u]['job_count'], "{days}:{hours}:{minutes}:{seconds}"),
+            ( ( (users[u]['cpu_time'].total_seconds()) / ( (users[u]['wait_time'].total_seconds()) / users[u]['job_count']) ) / 3600 ) )
+    print "-----------------------------"
+
+    mpi_jobs_complete = (jobs_complete - serial_jobs_complete - shared_jobs_complete)
+    total_mpi_cpus_used = (total_cpus_used - serial_jobs_complete - total_shared_cpus_used)
+    total_mpi_memory_bytes_requested = (total_memory_bytes_requested - total_serial_memory_bytes_requested - total_shared_memory_bytes_requested)
+
+    print " "
+    print "Total jobs: %d" % alljobs
+    print "Total jobs completed: %d (serial %d / MPI %d / SM %d)" % (jobs_complete, serial_jobs_complete, mpi_jobs_complete, shared_jobs_complete)
+    print "Total job time: %s" % parser.strfdelta(total_job_time,"{days}:{hours}:{minutes}:{seconds}")
+    print "Number of users: %d" % len(users)
+    print "Number of cores used: %d (serial %d / MPI %d / SM %d)" % (total_cpus_used, serial_jobs_complete, total_mpi_cpus_used, total_shared_cpus_used)
+    print " "
+
+    try:
+     print "Average cores per job: %2.2f (MPI %2.2f / SM %2.2f)" % ((float(total_cpus_used)/int(jobs_complete)), (float(total_mpi_cpus_used)/int(mpi_jobs_complete)), (float(total_shared_cpus_used)/int(shared_jobs_complete)))
+    except:
+     if jobs_complete==0:
+      avg_cores=0
+     else:
+      avg_cores=float(total_cpus_used)/int(jobs_complete)
+     if mpi_jobs_complete==0:
+      avg_cores_mpi=0.0
+     else:
+      avg_cores_mpi=float(total_mpi_cpus_used)/int(mpi_jobs_complete)
+     if shared_jobs_complete==0:
+      avg_cores_shared=0.0
+     else:
+      avg_cores_shared=float(total_shared_cpus_used)/int(shared_jobs_complete)
+     print "Average cores per job: %2.2f (MPI %2.2f / SM %2.2f)" % (avg_cores, avg_cores_mpi, avg_cores_shared) 
+
+    # Print overall time stats
+    try:
+     print "Average wallclock time: %s" % parser.strfdelta( total_job_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
+     print "Average cpu time: %s" % parser.strfdelta( total_cpu_hours/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
+     print "Average wait time: %s" % parser.strfdelta( total_wait_time/jobs_complete, "{days}:{hours}:{minutes}:{seconds}")
+    except:
+     print "Average wallclock time: 0:00:00:00"
+     print "Average node time: 0:00:00:00"
+     print "Average cpu time: 0:00:00:00"
+     print "Average wait time: 0:00:00:00"
+
+    try:
+     print "Average fairness metric: %s" % ( ( (total_cpu_hours.total_seconds()) / ( (total_wait_time.total_seconds()) / jobs_complete ) ) / 3600 )
+     #( (users[u]['cpu_time'].total_seconds()) / ( (users[u]['wait_time'].total_seconds()) / users[u]['job_count']) ) )
+    except:
+     print "Average fairness metric: NA"
+
+    # Print overall memory stats
+    print " "
+    print "Total memory requested: %s (serial %s, MPI %s, SM %s)" % (bytes_to_human(total_memory_bytes_requested), bytes_to_human(total_serial_memory_bytes_requested), bytes_to_human(total_mpi_memory_bytes_requested), bytes_to_human(total_shared_memory_bytes_requested))
+    try:
+     print "Average memory per job: %s (serial %s, MPI %s, SM %s)" % (bytes_to_human((float(total_memory_bytes_requested)/int(jobs_complete))),
+      bytes_to_human(float(total_serial_memory_bytes_requested)/int(serial_jobs_complete)),
+      bytes_to_human(float(total_mpi_memory_bytes_requested)/int(mpi_jobs_complete)),
+      bytes_to_human(float(total_shared_memory_bytes_requested)/int(shared_jobs_complete)))
+    except:
+     if jobs_complete==0:
+      avg_mem=0
+     else:
+      avg_mem=float(total_memory_bytes_requested)/int(jobs_complete)
+     if serial_jobs_complete==0:
+      avg_mem_serial=0.0
+     else:
+      avg_mem_serial=float(total_serial_memory_bytes_requested)/int(serial_jobs_complete)
+     if mpi_jobs_complete==0:
+      avg_mem_mpi=0.0
+     else:
+      avg_mem_mpi=float(total_mpi_memory_bytes_requested)/int(mpi_jobs_complete)
+     if shared_jobs_complete==0:
+      avg_mem_shared=0.0
+     else:
+      avg_mem_shared=float(total_shared_memory_bytes_requested)/int(shared_jobs_complete)
+     print "Average memory per job: %s (serial %s, MPI %s, SM %s)" % (bytes_to_human(avg_mem), bytes_to_human(avg_mem_serial), bytes_to_human(avg_mem_mpi), bytes_to_human(avg_mem_shared))
+
+    try:
+     print "Average memory per core: %s (serial %s, MPI %s, SM %s)" % (bytes_to_human(float(total_memory_bytes_requested)/total_cpus_used), 
+      bytes_to_human(float(total_serial_memory_bytes_requested)/int(serial_jobs_complete)), 
+      bytes_to_human(float(total_mpi_memory_bytes_requested)/int(total_mpi_cpus_used)), 
+      bytes_to_human(float(total_shared_memory_bytes_requested)/int(total_shared_cpus_used)))
+    except:
+     if jobs_complete==0:
+      avg_mem_per_core=0
+     else:
+      avg_mem_per_core=float(total_memory_bytes_requested)/int(total_cpus_used)
+     if serial_jobs_complete==0:
+      avg_mem_per_core_serial=0.0
+     else:
+      avg_mem_per_core_serial=float(total_serial_memory_bytes_requested)/int(serial_jobs_complete)
+     if mpi_jobs_complete==0:
+      avg_mem_per_core_mpi=0.0
+     else:
+      avg_mem_per_core_mpi=float(total_mpi_memory_bytes_requested)/int(total_mpi_cpus_used)
+     if shared_jobs_complete==0:
+      avg_mem_per_core_shared=0.0
+     else:
+      avg_mem_per_core_shared=float(total_shared_memory_bytes_requested)/int(total_shared_cpus_used)
+     print "Average memory per core: %s (serial %s, MPI %s, SM %s)" % (bytes_to_human(avg_mem_per_core), bytes_to_human(avg_mem_per_core_serial), bytes_to_human(avg_mem_per_core_mpi), bytes_to_human(avg_mem_per_core_shared))
+
+    print " "
+    print "-----------------------------"
 
 
+    #mem_histo_sum.hist(mem_per_core_all, bins=memory_bins_bytes, cumulative=True)
+    #mem_histo_n.hist(mem_per_core_all, bins=memory_bins_bytes, normed=True)
 #    print "DEBUG"
 #    print total_job_time
-#    print total_node_hours
 #    print users
 
 
@@ -231,10 +510,14 @@ ap.add_argument("--print-nodes","-n",dest="nodes",action="store_true",required=F
 ap.add_argument("--files","-f",dest="files",nargs='+',action="store",required=False,help="Use the accounting records in these files",
     default = glob('/var/spool/torque/server_priv/accounting/*'))
 ap.add_argument("--statistics","-s",dest="summarize",action="store_true",required=False,default=False,help="Print utilization statistics")
+ap.add_argument("--debug","-d",dest="debug",action="store_true",required=False,default=False,help="Print debug information")
 
 args=ap.parse_args()
 
-jobs = parser.parse_files(args.files)
+if args.debug:
+    debug = 1
+
+jobs = parser.parse_files(args.files, debug)
 
 if args.job:
     print_full_job(args.job,jobs)

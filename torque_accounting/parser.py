@@ -15,7 +15,7 @@ def strfdelta(tdelta, fmt):
     d['seconds'] = "%02d" % d['seconds']
     return fmt.format(**d)
 
-def parse_line(line):
+def parse_line(line, debug):
     event = line.split(';')
     job_name = event[2]
     event_type = event[1]
@@ -24,22 +24,51 @@ def parse_line(line):
     properties={}
     prop_strings = event[3].split(" ")
     for p in prop_strings:
-        prop=p.split("=")
+        # DBG: Don't over-split complex node flags
+        prop=p.split("=", 1)
+        if debug==1:
+         print "Parsing p " + p + " (len " + str(len(prop)) + ")"
         if len(prop)==2:
             properties[prop[0]] = prop[1]
+            if debug==1:
+             print "Parsing property " + prop[0]
+            # DBG: Deal with : separated node fields, but only for node flags
+            if "nodes" in prop[0]:
+                thisprop=prop[0]
+                flags=prop[1].split(":")
+                if len(flags) > 1:
+                    for f in flags:
+                        subprop=f.split("=")
+                        if len(subprop)==2:
+                            properties[subprop[0]] = subprop[1]
+                            if debug==1:
+                             print "Found subprop " + subprop[0] + " = " + subprop[1] + " (for prop " + thisprop + ")"
+                        elif len(subprop)==1:
+                            propparts=thisprop.split(".")
+                            # Differentiate between numeric values and node flags ("gpu")
+                            try:
+                                properties[propparts[1]] = str(int(subprop[0]))
+                                if debug==1:
+                                 print "Found subprop " + propparts[1] + " = " + subprop[0] + " (for prop " + thisprop + ")"
+                            except ValueError:
+                                properties[subprop[0]] = subprop[0]
+                                if debug==1:
+                                 print "Found subprop " + subprop[0] + " = " + subprop[0] + " (for prop " + thisprop + ")"
 
     return (job_name, event_type, event_time, properties)
 
-def parse_records(text):
+def parse_records(text, debug):
     jobs = {}
 
     lines=text.split("\n")
 
     for line in lines:
+        if debug==1:
+            print line
         if len(line)==0:
             continue
         try:
-            job_name, event_type, event_time, properties = parse_line(line)
+            job_name, event_type, event_time, properties = parse_line(line, debug)
         except IndexError:
             sys.stderr.write("WARNING: line could not be parsed\n%s\n" % line)
             continue
@@ -50,6 +79,8 @@ def parse_records(text):
         
         for p in properties:
             jobs[job_name][p]=properties[p]
+            if debug==1:
+                print "Adding j " + job_name + " p " + p + " = " + properties[p]
 
     return jobs
 
@@ -71,12 +102,12 @@ def calculate_durations(jobs):
             pass
     return jobs
 
-def parse_files(filenames):
+def parse_files(filenames, debug):
     texts=[]
     for fname in filenames:
         f = open(fname,'r')
         texts.append(f.read())
         f.close
-    return calculate_durations(parse_records("\n".join(texts)))
+    return calculate_durations(parse_records("\n".join(texts), debug))
 
 
