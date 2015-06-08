@@ -242,7 +242,7 @@ def print_summary(jobs):
          pass
 
         # Convert memory values to bytes
-        jobs[j]['mem.qsub'] = human_to_bytes(jobs[j]['Resource_List.mem'])
+        jobs[j]['mem.qsub'] = human_to_bytes(jobs[j].get('Resource_List.mem','0kb'))
         jobs[j]['mem_per_core'] = jobs[j]['mem.qsub'] / procs
         mem_per_core_all.append(jobs[j]['mem_per_core'])
         mem_per_core_all_mb.append(jobs[j]['mem_per_core'] / (1024*1024))
@@ -384,11 +384,21 @@ def print_summary(jobs):
     #print newfmt % ("USER","JOBS","AVG WAIT/C", "AVG WAIT TIME")
     #print newfmt % ("====","====","==========","==============")
     for u in sorted(users, key=lambda x: users[x]['cpu_time'], reverse=True):
+	cpu_time = users[u]['cpu_time'].total_seconds()
+	wait_time = users[u]['wait_time'].total_seconds()
+	job_count = users[u]['job_count']
+	if wait_time == 0 or job_count == 0:
+            fairness = 0
+        else:
+            fairness = (cpu_time / (wait_time / job_count)) / 3600
+	print "%s %s %s" % (cpu_time, wait_time, job_count)
         print newfmt % ( u, str(users[u]['job_count']),
             parser.strfdelta((users[u]['cpu_time']/users[u]['job_count']),"{days}:{hours}:{minutes}:{seconds}"),
             parser.strfdelta( users[u]['wait_per_core']/users[u]['job_count'], "{days}:{hours}:{minutes}:{seconds}"),
             parser.strfdelta( users[u]['wait_time']/users[u]['job_count'], "{days}:{hours}:{minutes}:{seconds}"),
-            ( ( (users[u]['cpu_time'].total_seconds()) / ( (users[u]['wait_time'].total_seconds()) / users[u]['job_count']) ) / 3600 ) )
+            fairness
+	)
+            #( ( (users[u]['cpu_time'].total_seconds()) / ( (users[u]['wait_time'].total_seconds()) / users[u]['job_count']) ) / 3600 ) )
     print "-----------------------------"
 
     mpi_jobs_complete = (jobs_complete - serial_jobs_complete - shared_jobs_complete)
