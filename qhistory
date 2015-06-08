@@ -398,7 +398,6 @@ def print_summary(jobs):
             parser.strfdelta( users[u]['wait_time']/users[u]['job_count'], "{days}:{hours}:{minutes}:{seconds}"),
             fairness
 	)
-            #( ( (users[u]['cpu_time'].total_seconds()) / ( (users[u]['wait_time'].total_seconds()) / users[u]['job_count']) ) / 3600 ) )
     print "-----------------------------"
 
     mpi_jobs_complete = (jobs_complete - serial_jobs_complete - shared_jobs_complete)
